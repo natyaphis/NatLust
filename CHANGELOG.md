@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 1.0.9
+
+- Added a dedicated "Sprite Animation Settings" section label above the row, column, frame, and FPS controls
+- Updated the texture and sound example text to use generic `###.tga` and `###.mp3` placeholders
+- Updated the default sprite animation settings to 4 rows, 8 columns, 32 frames, and 6 FPS
+
 ## 1.0.8
 
 - Added a GitHub Actions release packaging workflow based on the IcicleBars packaging setup

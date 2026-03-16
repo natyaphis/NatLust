@@ -64,10 +64,10 @@ local defaults = {
     strata = "HIGH",
     level = 10,
     enableAnimation = true,
-    spriteColumns = 4,
-    spriteRows = 8,
+    spriteColumns = 8,
+    spriteRows = 4,
     spriteFrames = 32,
-    spriteFPS = 12,
+    spriteFPS = 6,
 }
 
 local function CopyDefaults(target, source)
@@ -815,22 +815,27 @@ local function CreateSettingsPanel()
     soundHelp:SetWidth(240)
     soundHelp:SetText(L.SOUND_EXAMPLE or "Example: pedro.mp3")
 
-    local columnsLabel = CreateSettingLabel(settingsPanel, L.SPRITE_COLUMNS or "Columns", soundHelp, -300, -22)
+    local spriteSectionLabel = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    spriteSectionLabel:SetPoint("TOPLEFT", soundHelp, "BOTTOMLEFT", -300, -22)
+    spriteSectionLabel:SetJustifyH("LEFT")
+    spriteSectionLabel:SetText(L.SPRITE_SECTION or "Sprite Animation Settings")
+
+    local columnsLabel = CreateSettingLabel(settingsPanel, L.SPRITE_COLUMNS or "Columns", spriteSectionLabel, 0, -12)
     columnsBox = CreatePathEditBox(settingsPanel, columnsLabel, tostring(GetConfig().spriteColumns or defaults.spriteColumns), function(value)
         GetConfig().spriteColumns = ClampInteger(value, defaults.spriteColumns, 1)
     end, 80)
 
-    local rowsLabel = CreateSettingLabel(settingsPanel, L.SPRITE_ROWS or "Rows", soundHelp, -300 + smallFieldStep, -22)
+    local rowsLabel = CreateSettingLabel(settingsPanel, L.SPRITE_ROWS or "Rows", spriteSectionLabel, smallFieldStep, -12)
     rowsBox = CreatePathEditBox(settingsPanel, rowsLabel, tostring(GetConfig().spriteRows or defaults.spriteRows), function(value)
         GetConfig().spriteRows = ClampInteger(value, defaults.spriteRows, 1)
     end, 80)
 
-    local framesLabel = CreateSettingLabel(settingsPanel, L.SPRITE_FRAMES or "Frames", soundHelp, -300 + (smallFieldStep * 2), -22)
+    local framesLabel = CreateSettingLabel(settingsPanel, L.SPRITE_FRAMES or "Frames", spriteSectionLabel, smallFieldStep * 2, -12)
     framesBox = CreatePathEditBox(settingsPanel, framesLabel, tostring(GetConfig().spriteFrames or defaults.spriteFrames), function(value)
         GetConfig().spriteFrames = ClampInteger(value, defaults.spriteFrames, 1)
     end, 80)
 
-    local fpsLabel = CreateSettingLabel(settingsPanel, L.SPRITE_FPS or "FPS", soundHelp, -300 + (smallFieldStep * 3), -22)
+    local fpsLabel = CreateSettingLabel(settingsPanel, L.SPRITE_FPS or "FPS", spriteSectionLabel, smallFieldStep * 3, -12)
     fpsBox = CreatePathEditBox(settingsPanel, fpsLabel, tostring(GetConfig().spriteFPS or defaults.spriteFPS), function(value)
         GetConfig().spriteFPS = ClampInteger(value, defaults.spriteFPS, 1)
     end, 80)
