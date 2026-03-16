@@ -9,25 +9,37 @@ local visualFrame
 local visualTexture
 local visualAnimation
 local anchorLabel
+local settingsCategory
+local settingsPanel
+local texturePathBox
+local soundPathBox
+local statusText
+local testToggleButton
+local lockToggleButton
+local applySettingsButton
+local StartVisual
+local StopVisual
+local UpdateToggleButtonLabels
+local RefreshPathInputs
+local isElvUISkinned = false
 
 local trackedBuffs = {
-    ["Bloodlust"] = true,
-    ["Heroism"] = true,
-    ["Time Warp"] = true,
-    ["Primal Rage"] = true,
-    ["Fury of the Aspects"] = true,
-    ["Harrier's Cry"] = true,
+    [2825] = true, -- Bloodlust
+    [32182] = true, -- Heroism
+    [80353] = true, -- Time Warp
+    [264667] = true, -- Primal Rage
+    [390386] = true, -- Fury of the Aspects
 }
 
 local defaults = {
-    texturePath = "Interface\\AddOns\\NatLust\\media\\texture.tga",
-    soundPath = "Interface\\AddOns\\NatLust\\media\\lust.mp3",
+    texturePath = "Interface\\AddOns\\NatLust\\media\\pedro.tga",
+    soundPath = "Interface\\AddOns\\NatLust\\media\\pedro.mp3",
     point = "CENTER",
     relativePoint = "CENTER",
     x = 0,
     y = 0,
-    width = 256,
-    height = 256,
+    width = 100,
+    height = 100,
     alpha = 1,
     colorR = 1,
     colorG = 1,
@@ -38,7 +50,6 @@ local defaults = {
     enableAnimation = true,
 }
 
--- Initialize missing saved values without overwriting user settings.
 local function CopyDefaults(target, source)
     for key, value in pairs(source) do
         if type(value) == "table" then
@@ -55,7 +66,6 @@ local function ResetConfig()
     CopyDefaults(NatLustDB, defaults)
 end
 
--- Return the live saved-variable table with defaults applied.
 local function GetConfig()
     if type(NatLustDB) ~= "table" then
         ResetConfig()
@@ -66,7 +76,26 @@ local function GetConfig()
     return NatLustDB
 end
 
--- Persist the frame anchor after dragging in unlock mode.
+local function GetDisplayPath(value, fallback)
+    if value and value ~= "" then
+        return value
+    end
+
+    return fallback
+end
+
+local function NormalizePaths()
+    local db = GetConfig()
+
+    if not db.texturePath or db.texturePath == "" then
+        db.texturePath = defaults.texturePath
+    end
+
+    if not db.soundPath or db.soundPath == "" then
+        db.soundPath = defaults.soundPath
+    end
+end
+
 local function SaveFramePosition()
     local db = GetConfig()
     local point, _, relativePoint, x, y = visualFrame:GetPoint(1)
@@ -76,7 +105,6 @@ local function SaveFramePosition()
     db.y = y or defaults.y
 end
 
--- Apply all visual settings from SavedVariables to the display frame.
 local function ApplyVisualConfig()
     local db = GetConfig()
     visualFrame:ClearAllPoints()
@@ -91,7 +119,6 @@ local function ApplyVisualConfig()
     visualTexture:SetAlpha(1)
 end
 
--- Stop the currently playing custom sound if WoW returned a handle.
 local function StopAudio()
     if soundHandle then
         StopSound(soundHandle)
@@ -99,28 +126,32 @@ local function StopAudio()
     end
 end
 
--- Start the configured sound from the beginning and save its handle.
 local function StartAudio()
     local db = GetConfig()
 
     StopAudio()
 
     if not db.soundPath or db.soundPath == "" then
+        print("|cff00ff98NatLust|r Sound load failed: path is empty.")
         return
     end
 
     local willPlay, handle = PlaySoundFile(db.soundPath, "Master")
     if willPlay then
         soundHandle = handle
+        print("|cff00ff98NatLust|r Sound started: " .. db.soundPath)
+    else
+        print("|cff00ff98NatLust|r Sound load failed: " .. db.soundPath)
     end
 end
 
--- Stop the animation and hide the texture unless the frame is unlocked.
-local function StopVisual()
+StopVisual = function()
     if visualAnimation and visualAnimation:IsPlaying() then
         visualAnimation:Stop()
     end
 
+    visualFrame:SetScript("OnUpdate", nil)
+    visualTexture:SetTexCoord(0, 1, 0, 1)
     visualTexture:Hide()
 
     if unlockState then
@@ -132,11 +163,18 @@ local function StopVisual()
     end
 end
 
--- Show the texture and always restart the animation from the beginning.
-local function StartVisual()
+StartVisual = function()
     local db = GetConfig()
+    local textureLoaded
 
     ApplyVisualConfig()
+    textureLoaded = visualTexture:SetTexture(db.texturePath)
+    if textureLoaded == false or textureLoaded == nil then
+        print("|cff00ff98NatLust|r Texture load failed: " .. tostring(db.texturePath))
+    else
+        print("|cff00ff98NatLust|r Texture started: " .. db.texturePath)
+    end
+
     visualFrame:Show()
     visualTexture:Show()
 
@@ -161,35 +199,44 @@ local function StopEffects()
     StopVisual()
 end
 
--- Start both the visual and audio parts of the effect.
 local function StartEffects()
     StartVisual()
     StartAudio()
 end
 
-local function AuraMatchesName(name)
-    return name and trackedBuffs[name] or false
+local function AuraMatchesSpellID(spellID)
+    return spellID and trackedBuffs[spellID] or false
 end
 
--- Unified aura scan for player helpful buffs.
 local function HasTrackedAura()
     local index = 1
+    local auraData
 
     while true do
-        local name = UnitBuff("player", index)
-        if not name then
-            return false
-        end
+        if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+            auraData = C_UnitAuras.GetAuraDataByIndex("player", index, "HELPFUL")
+            if not auraData then
+                return false
+            end
 
-        if AuraMatchesName(name) then
-            return true
+            if AuraMatchesSpellID(auraData.spellId) then
+                return true
+            end
+        else
+            local _, _, _, _, _, _, _, _, _, spellID = UnitBuff("player", index)
+            if not spellID then
+                return false
+            end
+
+            if AuraMatchesSpellID(spellID) then
+                return true
+            end
         end
 
         index = index + 1
     end
 end
 
--- Transition gate that prevents duplicate start and stop calls.
 local function UpdateActiveState(nextState)
     if nextState and not activeState then
         activeState = true
@@ -200,16 +247,18 @@ local function UpdateActiveState(nextState)
     end
 end
 
--- Re-evaluate the player's lust state from UNIT_AURA.
 local function EvaluateAuras()
     if testState then
         return
     end
 
-    UpdateActiveState(HasTrackedAura())
+    local hasTrackedAura = HasTrackedAura()
+    if hasTrackedAura and not activeState then
+        print("|cff00ff98NatLust|r Lust aura detected on player.")
+    end
+    UpdateActiveState(hasTrackedAura)
 end
 
--- Toggle drag mode and show an anchor outline while unlocked.
 local function SetUnlocked(enabled)
     unlockState = enabled and true or false
 
@@ -234,22 +283,22 @@ local function SetUnlocked(enabled)
             visualFrame:Hide()
         end
     end
+
+    UpdateToggleButtonLabels()
 end
 
--- Manual preview mode for testing texture, sound, and animation.
 local function RunTest()
     testState = true
-    StartEffects()
+    UpdateActiveState(true)
+    UpdateToggleButtonLabels()
 end
 
--- Hard stop for manual preview or live aura-driven playback.
 local function StopAll()
     testState = false
-    activeState = false
-    StopEffects()
+    UpdateActiveState(false)
+    UpdateToggleButtonLabels()
 end
 
--- Create the main display frame, texture, anchor label, and animation group.
 local function CreateVisualFrame()
     visualFrame = CreateFrame("Frame", ADDON_NAME .. "DisplayFrame", UIParent, "BackdropTemplate")
     visualFrame:SetClampedToScreen(true)
@@ -323,45 +372,222 @@ local function CreateVisualFrame()
     ApplyVisualConfig()
 end
 
-local function PrintUsage()
-    print("|cff00ff98NatLust|r commands:")
-    print("/natlust test - Show the texture and play the sound once")
-    print("/natlust stop - Stop sound and hide the texture")
-    print("/natlust unlock - Unlock the frame for dragging")
-    print("/natlust lock - Lock the frame in place")
-    print("/natlust reset - Reset saved settings")
+local function CreateSettingLabel(parent, text, anchor, offsetX, offsetY)
+    local label = parent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    label:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", offsetX or 0, offsetY or -16)
+    label:SetJustifyH("LEFT")
+    label:SetText(text)
+    return label
 end
 
--- Slash handler for testing, stopping, moving, and resetting the addon.
-local function HandleSlashCommand(message)
-    local command = string.lower(strtrim(message or ""))
+local function CreatePathEditBox(parent, anchor, initialText, onCommit)
+    local editBox = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+    editBox:SetSize(520, 30)
+    editBox:SetAutoFocus(false)
+    editBox:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -8)
+    editBox:SetTextInsets(8, 8, 0, 0)
+    editBox:SetText(initialText or "")
+    editBox:SetCursorPosition(0)
 
-    if command == "test" then
-        RunTest()
-    elseif command == "stop" then
-        StopAll()
-    elseif command == "unlock" then
-        SetUnlocked(true)
-    elseif command == "lock" then
-        SetUnlocked(false)
-    elseif command == "reset" then
-        ResetConfig()
-        ApplyVisualConfig()
-        SetUnlocked(false)
-        StopAll()
-        print("|cff00ff98NatLust|r settings reset.")
-    else
-        PrintUsage()
+    editBox:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+        onCommit(self:GetText())
+    end)
+
+    editBox:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+    end)
+
+    editBox:SetScript("OnEditFocusLost", function(self)
+        onCommit(self:GetText())
+    end)
+
+    return editBox
+end
+
+local function ShowStatusMessage(text)
+    if statusText then
+        statusText:SetText(text or "")
     end
 end
 
--- Addon bootstrap: init config, frame, slash commands, and aura listener.
+local function ApplyElvUISkin()
+    if isElvUISkinned then
+        return
+    end
+
+    local E = _G.ElvUI and unpack(_G.ElvUI)
+    if not E or not E.private or not E.private.skins or not E.private.skins.blizzard then
+        return
+    end
+
+    local S = E.GetModule and E:GetModule("Skins", true)
+    if not S or not S.HandleButton then
+        return
+    end
+
+    if applySettingsButton then
+        S:HandleButton(applySettingsButton)
+    end
+
+    if testToggleButton then
+        S:HandleButton(testToggleButton)
+    end
+
+    if lockToggleButton then
+        S:HandleButton(lockToggleButton)
+    end
+
+    isElvUISkinned = true
+end
+
+UpdateToggleButtonLabels = function()
+    if testToggleButton then
+        testToggleButton:SetText(testState and "End Fake Lust" or "Fake Lust")
+    end
+
+    if lockToggleButton then
+        lockToggleButton:SetText(unlockState and "Lock" or "Unlock")
+    end
+end
+
+local function OpenSettingsPanel()
+    NormalizePaths()
+    if settingsCategory and Settings and Settings.OpenToCategory then
+        Settings.OpenToCategory(settingsCategory:GetID())
+        C_Timer.After(0, RefreshPathInputs)
+    end
+end
+
+RefreshPathInputs = function()
+    if not texturePathBox or not soundPathBox then
+        return
+    end
+
+    NormalizePaths()
+
+    local db = GetConfig()
+    texturePathBox:SetText(GetDisplayPath(db.texturePath, defaults.texturePath))
+    texturePathBox:SetCursorPosition(0)
+    soundPathBox:SetText(GetDisplayPath(db.soundPath, defaults.soundPath))
+    soundPathBox:SetCursorPosition(0)
+end
+
+local function CreateSettingsPanel()
+    if not (Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory) then
+        return
+    end
+
+    settingsPanel = CreateFrame("Frame", ADDON_NAME .. "SettingsPanel", UIParent)
+    settingsPanel.name = ADDON_NAME
+
+    local title = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", 16, -16)
+    title:SetText("NatLust")
+
+    local subtitle = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
+    subtitle:SetJustifyH("LEFT")
+    subtitle:SetText("Configure the default texture and sound paths for NatLust.")
+
+    local textureLabel = CreateSettingLabel(settingsPanel, "Texture Path", subtitle, 0, -24)
+    texturePathBox = CreatePathEditBox(settingsPanel, textureLabel, GetDisplayPath(GetConfig().texturePath, defaults.texturePath), function(value)
+        GetConfig().texturePath = strtrim(value or "")
+    end)
+    texturePathBox:SetText(GetDisplayPath(GetConfig().texturePath, defaults.texturePath))
+
+    local textureHelp = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    textureHelp:SetPoint("TOPLEFT", texturePathBox, "BOTTOMLEFT", 4, -6)
+    textureHelp:SetJustifyH("LEFT")
+    textureHelp:SetText([[Example: Interface\AddOns\NatLust\media\pedro.tga]])
+
+    local soundLabel = CreateSettingLabel(settingsPanel, "Sound Path", textureHelp, -4, -24)
+    soundPathBox = CreatePathEditBox(settingsPanel, soundLabel, GetDisplayPath(GetConfig().soundPath, defaults.soundPath), function(value)
+        GetConfig().soundPath = strtrim(value or "")
+    end)
+    soundPathBox:SetText(GetDisplayPath(GetConfig().soundPath, defaults.soundPath))
+
+    local soundHelp = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    soundHelp:SetPoint("TOPLEFT", soundPathBox, "BOTTOMLEFT", 4, -6)
+    soundHelp:SetJustifyH("LEFT")
+    soundHelp:SetText([[Example: Interface\AddOns\NatLust\media\pedro.mp3]])
+
+    applySettingsButton = CreateFrame("Button", nil, settingsPanel, "UIPanelButtonTemplate")
+    applySettingsButton:SetSize(120, 24)
+    applySettingsButton:SetPoint("TOPLEFT", soundHelp, "BOTTOMLEFT", 0, -16)
+    applySettingsButton:SetText("Apply")
+    applySettingsButton:SetScript("OnClick", function()
+        GetConfig().texturePath = GetDisplayPath(strtrim(texturePathBox:GetText() or ""), defaults.texturePath)
+        GetConfig().soundPath = GetDisplayPath(strtrim(soundPathBox:GetText() or ""), defaults.soundPath)
+        ApplyVisualConfig()
+        ShowStatusMessage("Settings applied.")
+    end)
+
+    testToggleButton = CreateFrame("Button", nil, settingsPanel, "UIPanelButtonTemplate")
+    testToggleButton:SetSize(120, 24)
+    testToggleButton:SetPoint("LEFT", applySettingsButton, "RIGHT", 8, 0)
+    testToggleButton:SetScript("OnClick", function()
+        if testState then
+            StopAll()
+            ShowStatusMessage("Fake lust ended.")
+        else
+            RunTest()
+            ShowStatusMessage("Fake lust started.")
+        end
+        UpdateToggleButtonLabels()
+    end)
+
+    lockToggleButton = CreateFrame("Button", nil, settingsPanel, "UIPanelButtonTemplate")
+    lockToggleButton:SetSize(120, 24)
+    lockToggleButton:SetPoint("LEFT", testToggleButton, "RIGHT", 8, 0)
+    lockToggleButton:SetScript("OnClick", function()
+        if unlockState then
+            SetUnlocked(false)
+            ShowStatusMessage("Frame locked.")
+        else
+            SetUnlocked(true)
+            ShowStatusMessage("Frame unlocked.")
+        end
+        UpdateToggleButtonLabels()
+    end)
+
+    statusText = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    statusText:SetPoint("TOPLEFT", applySettingsButton, "BOTTOMLEFT", 0, -16)
+    statusText:SetJustifyH("LEFT")
+    statusText:SetWidth(520)
+    statusText:SetText("The text boxes are prefilled with Interface\\AddOns\\NatLust\\media paths.")
+
+    settingsPanel:SetScript("OnShow", function()
+        RefreshPathInputs()
+        C_Timer.After(0, RefreshPathInputs)
+        UpdateToggleButtonLabels()
+    end)
+
+    settingsCategory = Settings.RegisterCanvasLayoutCategory(settingsPanel, ADDON_NAME)
+    Settings.RegisterAddOnCategory(settingsCategory)
+    RefreshPathInputs()
+    UpdateToggleButtonLabels()
+    ApplyElvUISkin()
+end
+
+local function PrintUsage()
+    print("|cff00ff98NatLust|r Use /nl or /natlust to open the settings panel.")
+end
+
+local function HandleSlashCommand()
+    OpenSettingsPanel()
+end
+
 local function Initialize()
     GetConfig()
+    NormalizePaths()
     CreateVisualFrame()
+    CreateSettingsPanel()
     SetUnlocked(false)
+    ApplyElvUISkin()
 
-    SLASH_NATLUST1 = "/natlust"
+    SLASH_NATLUST1 = "/nl"
+    SLASH_NATLUST2 = "/natlust"
     SlashCmdList.NATLUST = HandleSlashCommand
 
     addon:RegisterEvent("UNIT_AURA")
