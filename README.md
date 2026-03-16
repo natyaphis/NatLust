@@ -94,4 +94,4 @@ NatLust stores its settings in `NatLustDB` with the following keys:
 
 ## License
 
-This project is released under the MIT License. See [LICENSE](LICENSE).
+All Rights Reserved. See [LICENSE](LICENSE).
