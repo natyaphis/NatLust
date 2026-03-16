@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 1.0.6
+
+- End fake lust preview automatically when the settings panel is closed
+- Reduced sprite preview jitter by disabling the extra pulse animation during multi-frame playback
+
 ## 1.0.5
 
 - Added sprite sheet playback controls for columns, rows, frames, and FPS

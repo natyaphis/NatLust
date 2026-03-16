@@ -331,6 +331,7 @@ end
 StartVisual = function()
     local db = GetConfig()
     local textureLoaded
+    local _, _, frames = GetSpriteSettings()
 
     if not db.texturePath or db.texturePath == "" then
         StopVisual()
@@ -350,7 +351,13 @@ StartVisual = function()
     visualTexture:Show()
     StartSpriteAnimation()
 
-    if db.enableAnimation and visualAnimation then
+    if frames > 1 then
+        if visualAnimation then
+            visualAnimation:Stop()
+        end
+        visualTexture:SetAlpha(1)
+        visualTexture:SetScale(1)
+    elseif db.enableAnimation and visualAnimation then
         visualAnimation:Stop()
         visualTexture:SetAlpha(1)
         visualTexture:SetScale(1)
@@ -970,6 +977,12 @@ local function CreateSettingsPanel()
         RefreshPathInputs()
         C_Timer.After(0, RefreshPathInputs)
         UpdateToggleButtonLabels()
+    end)
+
+    settingsPanel:SetScript("OnHide", function()
+        if testState then
+            StopAll()
+        end
     end)
 
     settingsCategory = Settings.RegisterCanvasLayoutCategory(settingsPanel, ADDON_NAME)
