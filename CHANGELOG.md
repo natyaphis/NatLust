@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 1.1.1
+
+- Fixed release packaging so the zip keeps an empty `Media/` folder after removing `.gitkeep`
+
 ## 1.1.0
 
 - Changed the default texture and sound file names to `default.tga` and `default.mp3`

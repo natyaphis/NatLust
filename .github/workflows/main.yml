@@ -34,6 +34,7 @@ jobs:
             ./ package/NatLust/
 
           rm -f package/NatLust/Media/.gitkeep
+          mkdir -p package/NatLust/Media
 
           echo "Package content:"
           find package/NatLust -maxdepth 3 -print
