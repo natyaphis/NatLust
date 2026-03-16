@@ -45,6 +45,18 @@ Supported buffs:
 
 Replace the placeholder files in `media/` with your own assets if needed.
 
+## Audio Compatibility
+
+World of Warcraft can be picky about custom audio files. For the most reliable playback, use:
+
+- `MP3`
+- `44.1 kHz`
+- `128 kbps` or `192 kbps`
+- Stereo
+- Minimal metadata and no embedded cover art
+
+If a file exists in `media/` but still does not play, re-encode it to the format above first.
+
 ## Commands
 
 - `/natlust test` - Show the texture and play the sound once for testing

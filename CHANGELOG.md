@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 1.0.2
+
+- Changed the settings panel to store media file names and always load them from `Interface\\AddOns\\NatLust\\media\\`
+- Added a `Default` button to restore the default texture and sound file names
+- Improved path field prefilling so saved or default file names stay visible in the settings panel
+- Added additional bundled audio files in `media/`
+- Documented recommended WoW-compatible audio encoding settings in the README
+
 ## 1.0.1
 
 - Switched default media paths to the addon `media/` folder and updated the settings panel examples
