@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 1.0.8
+
+- Added a GitHub Actions release packaging workflow based on the IcicleBars packaging setup
+- Kept the `Media/` folder in the repository while excluding media files and `.gitkeep` from packaged release zips
+- Excluded `CHANGELOG.md` from packaged release zips
+
 ## 1.0.7
 
 - Stopped tracking bundled media files in git while keeping an empty `Media/` folder in the repository
