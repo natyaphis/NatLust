@@ -4,17 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 1.0.3
+
+- Renamed the addon asset folder from `media/` to `Media/`
+- Added a `Locales/` folder with English and Chinese translations for the settings UI and chat messages
+
 ## 1.0.2
 
-- Changed the settings panel to store media file names and always load them from `Interface\\AddOns\\NatLust\\media\\`
+- Changed the settings panel to store media file names and always load them from `Interface\\AddOns\\NatLust\\Media\\`
 - Added a `Default` button to restore the default texture and sound file names
 - Improved path field prefilling so saved or default file names stay visible in the settings panel
-- Added additional bundled audio files in `media/`
+- Added additional bundled audio files in `Media/`
 - Documented recommended WoW-compatible audio encoding settings in the README
 
 ## 1.0.1
 
-- Switched default media paths to the addon `media/` folder and updated the settings panel examples
+- Switched default media paths to the addon `Media/` folder and updated the settings panel examples
 - Added a settings panel that can be opened with `/nl` or `/natlust`
 - Added ElvUI button skin support for the settings actions
 - Added chat feedback for texture and sound load failures during preview

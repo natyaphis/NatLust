@@ -33,17 +33,17 @@ Supported buffs:
 
    - `NatLust.toc`
    - `NatLust.lua`
-   - `media/texture.tga`
-   - `media/lust.mp3`
+   - `Media/texture.tga`
+   - `Media/lust.mp3`
 
 3. Start the game or reload the UI with `/reload`.
 
 ## Default Resources
 
-- Texture: `Interface\\AddOns\\NatLust\\media\\texture.tga`
-- Sound: `Interface\\AddOns\\NatLust\\media\\lust.mp3`
+- Texture: `Interface\\AddOns\\NatLust\\Media\\texture.tga`
+- Sound: `Interface\\AddOns\\NatLust\\Media\\lust.mp3`
 
-Replace the placeholder files in `media/` with your own assets if needed.
+Replace the placeholder files in `Media/` with your own assets if needed.
 
 ## Audio Compatibility
 
@@ -55,7 +55,7 @@ World of Warcraft can be picky about custom audio files. For the most reliable p
 - Stereo
 - Minimal metadata and no embedded cover art
 
-If a file exists in `media/` but still does not play, re-encode it to the format above first.
+If a file exists in `Media/` but still does not play, re-encode it to the format above first.
 
 ## Commands
 

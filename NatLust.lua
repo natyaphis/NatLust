@@ -1,4 +1,5 @@
-local ADDON_NAME = ...
+local ADDON_NAME, addonTable = ...
+local L = addonTable.L or {}
 
 local addon = CreateFrame("Frame")
 local activeState = false
@@ -32,7 +33,7 @@ local trackedBuffs = {
     [390386] = true, -- Fury of the Aspects
 }
 
-local MEDIA_PREFIX = "Interface\\AddOns\\NatLust\\media\\"
+local MEDIA_PREFIX = "Interface\\AddOns\\NatLust\\Media\\"
 
 local defaults = {
     texturePath = "pedro.tga",
@@ -154,22 +155,22 @@ local function StartAudio()
     StopAudio()
 
     if not db.soundPath or db.soundPath == "" then
-        print("|cff00ff98NatLust|r Sound load failed: path is empty.")
+        print("|cff00ff98NatLust|r " .. (L.SOUND_EMPTY or "Sound load failed: filename is empty."))
         return
     end
 
     local soundPath = BuildMediaPath(db.soundPath)
     if not soundPath then
-        print("|cff00ff98NatLust|r Sound load failed: filename is empty.")
+        print("|cff00ff98NatLust|r " .. (L.SOUND_EMPTY or "Sound load failed: filename is empty."))
         return
     end
 
     local willPlay, handle = PlaySoundFile(soundPath, "Master")
     if willPlay then
         soundHandle = handle
-        print("|cff00ff98NatLust|r Sound started: " .. soundPath)
+        print("|cff00ff98NatLust|r " .. (L.SOUND_STARTED or "Sound started: ") .. soundPath)
     else
-        print("|cff00ff98NatLust|r Sound load failed: " .. soundPath)
+        print("|cff00ff98NatLust|r " .. (L.SOUND_FAILED or "Sound load failed: ") .. soundPath)
     end
 end
 
@@ -199,9 +200,9 @@ StartVisual = function()
     local texturePath = BuildMediaPath(db.texturePath)
     textureLoaded = visualTexture:SetTexture(texturePath)
     if textureLoaded == false or textureLoaded == nil then
-        print("|cff00ff98NatLust|r Texture load failed: " .. tostring(texturePath))
+        print("|cff00ff98NatLust|r " .. (L.TEXTURE_FAILED or "Texture load failed: ") .. tostring(texturePath))
     else
-        print("|cff00ff98NatLust|r Texture started: " .. texturePath)
+        print("|cff00ff98NatLust|r " .. (L.TEXTURE_STARTED or "Texture started: ") .. texturePath)
     end
 
     visualFrame:Show()
@@ -283,7 +284,7 @@ local function EvaluateAuras()
 
     local hasTrackedAura = HasTrackedAura()
     if hasTrackedAura and not activeState then
-        print("|cff00ff98NatLust|r Lust aura detected on player.")
+        print("|cff00ff98NatLust|r " .. (L.LUST_DETECTED or "Lust aura detected on player."))
     end
     UpdateActiveState(hasTrackedAura)
 end
@@ -363,7 +364,7 @@ local function CreateVisualFrame()
 
     anchorLabel = visualFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     anchorLabel:SetPoint("CENTER")
-    anchorLabel:SetText("NatLust")
+    anchorLabel:SetText(L.ADDON_TITLE or "NatLust")
     anchorLabel:Hide()
 
     visualAnimation = visualTexture:CreateAnimationGroup()
@@ -411,7 +412,7 @@ end
 
 local function CreatePathEditBox(parent, anchor, initialText, onCommit)
     local editBox = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-    editBox:SetSize(520, 30)
+    editBox:SetSize(360, 30)
     editBox:SetAutoFocus(false)
     editBox:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -8)
     editBox:SetTextInsets(8, 8, 0, 0)
@@ -476,11 +477,11 @@ end
 
 UpdateToggleButtonLabels = function()
     if testToggleButton then
-        testToggleButton:SetText(testState and "End Fake Lust" or "Fake Lust")
+        testToggleButton:SetText(testState and (L.END_FAKE_LUST or "End Fake Lust") or (L.FAKE_LUST or "Fake Lust"))
     end
 
     if lockToggleButton then
-        lockToggleButton:SetText(unlockState and "Lock" or "Unlock")
+        lockToggleButton:SetText(unlockState and (L.LOCK or "Lock") or (L.UNLOCK or "Unlock"))
     end
 end
 
@@ -516,14 +517,14 @@ local function CreateSettingsPanel()
 
     local title = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 16, -16)
-    title:SetText("NatLust")
+    title:SetText(L.ADDON_TITLE or "NatLust")
 
     local subtitle = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
     subtitle:SetJustifyH("LEFT")
-    subtitle:SetText("Enter file names only. NatLust will load them from Interface\\AddOns\\NatLust\\media\\")
+    subtitle:SetText(L.SUBTITLE or "Enter file names only. NatLust will load them from Interface\\AddOns\\NatLust\\Media\\")
 
-    local textureLabel = CreateSettingLabel(settingsPanel, "Texture File", subtitle, 0, -24)
+    local textureLabel = CreateSettingLabel(settingsPanel, L.TEXTURE_FILE or "Texture File", subtitle, 0, -24)
     texturePathBox = CreatePathEditBox(settingsPanel, textureLabel, GetDisplayPath(GetConfig().texturePath, defaults.texturePath), function(value)
         GetConfig().texturePath = strtrim(value or "")
     end)
@@ -532,9 +533,9 @@ local function CreateSettingsPanel()
     local textureHelp = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     textureHelp:SetPoint("TOPLEFT", texturePathBox, "BOTTOMLEFT", 4, -6)
     textureHelp:SetJustifyH("LEFT")
-    textureHelp:SetText([[Example: pedro.tga]])
+    textureHelp:SetText(L.TEXTURE_EXAMPLE or "Example: pedro.tga")
 
-    local soundLabel = CreateSettingLabel(settingsPanel, "Sound File", textureHelp, -4, -24)
+    local soundLabel = CreateSettingLabel(settingsPanel, L.SOUND_FILE or "Sound File", textureHelp, -4, -24)
     soundPathBox = CreatePathEditBox(settingsPanel, soundLabel, GetDisplayPath(GetConfig().soundPath, defaults.soundPath), function(value)
         GetConfig().soundPath = strtrim(value or "")
     end)
@@ -543,28 +544,28 @@ local function CreateSettingsPanel()
     local soundHelp = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     soundHelp:SetPoint("TOPLEFT", soundPathBox, "BOTTOMLEFT", 4, -6)
     soundHelp:SetJustifyH("LEFT")
-    soundHelp:SetText([[Example: pedro.mp3]])
+    soundHelp:SetText(L.SOUND_EXAMPLE or "Example: pedro.mp3")
 
     applySettingsButton = CreateFrame("Button", nil, settingsPanel, "UIPanelButtonTemplate")
     applySettingsButton:SetSize(120, 24)
     applySettingsButton:SetPoint("TOPLEFT", soundHelp, "BOTTOMLEFT", 0, -16)
-    applySettingsButton:SetText("Apply")
+    applySettingsButton:SetText(L.APPLY or "Apply")
     applySettingsButton:SetScript("OnClick", function()
         GetConfig().texturePath = GetDisplayPath(strtrim(texturePathBox:GetText() or ""), defaults.texturePath)
         GetConfig().soundPath = GetDisplayPath(strtrim(soundPathBox:GetText() or ""), defaults.soundPath)
         ApplyVisualConfig()
-        ShowStatusMessage("Settings applied.")
+        ShowStatusMessage(L.SETTINGS_APPLIED or "Settings applied.")
     end)
 
     defaultSettingsButton = CreateFrame("Button", nil, settingsPanel, "UIPanelButtonTemplate")
     defaultSettingsButton:SetSize(120, 24)
     defaultSettingsButton:SetPoint("LEFT", applySettingsButton, "RIGHT", 8, 0)
-    defaultSettingsButton:SetText("Default")
+    defaultSettingsButton:SetText(L.DEFAULT or "Default")
     defaultSettingsButton:SetScript("OnClick", function()
         GetConfig().texturePath = defaults.texturePath
         GetConfig().soundPath = defaults.soundPath
         RefreshPathInputs()
-        ShowStatusMessage("Default file names restored.")
+        ShowStatusMessage(L.DEFAULTS_RESTORED or "Default file names restored.")
     end)
 
     testToggleButton = CreateFrame("Button", nil, settingsPanel, "UIPanelButtonTemplate")
@@ -573,10 +574,10 @@ local function CreateSettingsPanel()
     testToggleButton:SetScript("OnClick", function()
         if testState then
             StopAll()
-            ShowStatusMessage("Fake lust ended.")
+            ShowStatusMessage(L.FAKE_LUST_ENDED or "Fake lust ended.")
         else
             RunTest()
-            ShowStatusMessage("Fake lust started.")
+            ShowStatusMessage(L.FAKE_LUST_STARTED or "Fake lust started.")
         end
         UpdateToggleButtonLabels()
     end)
@@ -587,10 +588,10 @@ local function CreateSettingsPanel()
     lockToggleButton:SetScript("OnClick", function()
         if unlockState then
             SetUnlocked(false)
-            ShowStatusMessage("Frame locked.")
+            ShowStatusMessage(L.FRAME_LOCKED or "Frame locked.")
         else
             SetUnlocked(true)
-            ShowStatusMessage("Frame unlocked.")
+            ShowStatusMessage(L.FRAME_UNLOCKED or "Frame unlocked.")
         end
         UpdateToggleButtonLabels()
     end)
@@ -599,7 +600,7 @@ local function CreateSettingsPanel()
     statusText:SetPoint("TOPLEFT", applySettingsButton, "BOTTOMLEFT", 0, -16)
     statusText:SetJustifyH("LEFT")
     statusText:SetWidth(520)
-    statusText:SetText("NatLust always loads files from Interface\\AddOns\\NatLust\\media\\")
+    statusText:SetText(L.STATUS_HINT or "NatLust always loads files from Interface\\AddOns\\NatLust\\Media\\")
 
     settingsPanel:SetScript("OnShow", function()
         RefreshPathInputs()
@@ -615,7 +616,7 @@ local function CreateSettingsPanel()
 end
 
 local function PrintUsage()
-    print("|cff00ff98NatLust|r Use /nl or /natlust to open the settings panel.")
+    print("|cff00ff98NatLust|r " .. (L.USAGE or "Use /nl or /natlust to open the settings panel."))
 end
 
 local function HandleSlashCommand()

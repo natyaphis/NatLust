@@ -1,0 +1,31 @@
+local _, addonTable = ...
+
+addonTable.L = addonTable.L or {}
+local L = addonTable.L
+
+L.ADDON_TITLE = "NatLust"
+L.SUBTITLE = "Enter file names only. NatLust will load them from Interface\\AddOns\\NatLust\\Media\\"
+L.TEXTURE_FILE = "Texture File"
+L.SOUND_FILE = "Sound File"
+L.TEXTURE_EXAMPLE = "Example: pedro.tga"
+L.SOUND_EXAMPLE = "Example: pedro.mp3"
+L.APPLY = "Apply"
+L.DEFAULT = "Default"
+L.FAKE_LUST = "Fake Lust"
+L.END_FAKE_LUST = "End Fake Lust"
+L.UNLOCK = "Unlock"
+L.LOCK = "Lock"
+L.SETTINGS_APPLIED = "Settings applied."
+L.DEFAULTS_RESTORED = "Default file names restored."
+L.FAKE_LUST_STARTED = "Fake lust started."
+L.FAKE_LUST_ENDED = "Fake lust ended."
+L.FRAME_LOCKED = "Frame locked."
+L.FRAME_UNLOCKED = "Frame unlocked."
+L.STATUS_HINT = "NatLust always loads files from Interface\\AddOns\\NatLust\\Media\\"
+L.USAGE = "Use /nl or /natlust to open the settings panel."
+L.SOUND_EMPTY = "Sound load failed: filename is empty."
+L.SOUND_STARTED = "Sound started: "
+L.SOUND_FAILED = "Sound load failed: "
+L.TEXTURE_FAILED = "Texture load failed: "
+L.TEXTURE_STARTED = "Texture started: "
+L.LUST_DETECTED = "Lust aura detected on player."
