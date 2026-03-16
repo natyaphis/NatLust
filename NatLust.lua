@@ -15,6 +15,7 @@ local settingsPanel
 local texturePathBox
 local soundPathBox
 local statusText
+local statusHintText
 local testToggleButton
 local lockToggleButton
 local applySettingsButton
@@ -88,6 +89,14 @@ local function GetDisplayPath(value, fallback)
     return fallback
 end
 
+local function GetDisplayValue(value, fallback)
+    if value == nil then
+        return fallback
+    end
+
+    return value
+end
+
 local function BuildMediaPath(fileName)
     local name = strtrim(fileName or "")
     if name == "" then
@@ -115,8 +124,17 @@ end
 local function NormalizePaths()
     local db = GetConfig()
 
-    db.texturePath = ExtractFileName(db.texturePath, defaults.texturePath)
-    db.soundPath = ExtractFileName(db.soundPath, defaults.soundPath)
+    if db.texturePath == nil then
+        db.texturePath = defaults.texturePath
+    else
+        db.texturePath = ExtractFileName(db.texturePath, "")
+    end
+
+    if db.soundPath == nil then
+        db.soundPath = defaults.soundPath
+    else
+        db.soundPath = ExtractFileName(db.soundPath, "")
+    end
 end
 
 local function SaveFramePosition()
@@ -155,13 +173,11 @@ local function StartAudio()
     StopAudio()
 
     if not db.soundPath or db.soundPath == "" then
-        print("|cff00ff98NatLust|r " .. (L.SOUND_EMPTY or "Sound load failed: filename is empty."))
         return
     end
 
     local soundPath = BuildMediaPath(db.soundPath)
     if not soundPath then
-        print("|cff00ff98NatLust|r " .. (L.SOUND_EMPTY or "Sound load failed: filename is empty."))
         return
     end
 
@@ -195,6 +211,11 @@ end
 StartVisual = function()
     local db = GetConfig()
     local textureLoaded
+
+    if not db.texturePath or db.texturePath == "" then
+        StopVisual()
+        return
+    end
 
     ApplyVisualConfig()
     local texturePath = BuildMediaPath(db.texturePath)
@@ -412,7 +433,7 @@ end
 
 local function CreatePathEditBox(parent, anchor, initialText, onCommit)
     local editBox = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-    editBox:SetSize(360, 30)
+    editBox:SetSize(260, 30)
     editBox:SetAutoFocus(false)
     editBox:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -8)
     editBox:SetTextInsets(8, 8, 0, 0)
@@ -454,6 +475,14 @@ local function ApplyElvUISkin()
     local S = E.GetModule and E:GetModule("Skins", true)
     if not S or not S.HandleButton then
         return
+    end
+
+    if texturePathBox and S.HandleEditBox then
+        S:HandleEditBox(texturePathBox)
+    end
+
+    if soundPathBox and S.HandleEditBox then
+        S:HandleEditBox(soundPathBox)
     end
 
     if applySettingsButton then
@@ -501,9 +530,9 @@ RefreshPathInputs = function()
     NormalizePaths()
 
     local db = GetConfig()
-    texturePathBox:SetText(GetDisplayPath(db.texturePath, defaults.texturePath))
+    texturePathBox:SetText(GetDisplayValue(db.texturePath, defaults.texturePath))
     texturePathBox:SetCursorPosition(0)
-    soundPathBox:SetText(GetDisplayPath(db.soundPath, defaults.soundPath))
+    soundPathBox:SetText(GetDisplayValue(db.soundPath, defaults.soundPath))
     soundPathBox:SetCursorPosition(0)
 end
 
@@ -535,11 +564,11 @@ local function CreateSettingsPanel()
     textureHelp:SetJustifyH("LEFT")
     textureHelp:SetText(L.TEXTURE_EXAMPLE or "Example: pedro.tga")
 
-    local soundLabel = CreateSettingLabel(settingsPanel, L.SOUND_FILE or "Sound File", textureHelp, -4, -24)
+    local soundLabel = CreateSettingLabel(settingsPanel, L.SOUND_FILE or "Sound File", textureHelp, 0, -18)
     soundPathBox = CreatePathEditBox(settingsPanel, soundLabel, GetDisplayPath(GetConfig().soundPath, defaults.soundPath), function(value)
         GetConfig().soundPath = strtrim(value or "")
     end)
-    soundPathBox:SetText(GetDisplayPath(GetConfig().soundPath, defaults.soundPath))
+    soundPathBox:SetText(GetDisplayValue(GetConfig().soundPath, defaults.soundPath))
 
     local soundHelp = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     soundHelp:SetPoint("TOPLEFT", soundPathBox, "BOTTOMLEFT", 4, -6)
@@ -551,8 +580,8 @@ local function CreateSettingsPanel()
     applySettingsButton:SetPoint("TOPLEFT", soundHelp, "BOTTOMLEFT", 0, -16)
     applySettingsButton:SetText(L.APPLY or "Apply")
     applySettingsButton:SetScript("OnClick", function()
-        GetConfig().texturePath = GetDisplayPath(strtrim(texturePathBox:GetText() or ""), defaults.texturePath)
-        GetConfig().soundPath = GetDisplayPath(strtrim(soundPathBox:GetText() or ""), defaults.soundPath)
+        GetConfig().texturePath = strtrim(texturePathBox:GetText() or "")
+        GetConfig().soundPath = strtrim(soundPathBox:GetText() or "")
         ApplyVisualConfig()
         ShowStatusMessage(L.SETTINGS_APPLIED or "Settings applied.")
     end)
@@ -600,7 +629,21 @@ local function CreateSettingsPanel()
     statusText:SetPoint("TOPLEFT", applySettingsButton, "BOTTOMLEFT", 0, -16)
     statusText:SetJustifyH("LEFT")
     statusText:SetWidth(520)
-    statusText:SetText(L.STATUS_HINT or "NatLust always loads files from Interface\\AddOns\\NatLust\\Media\\")
+    statusText:SetHeight(16)
+    statusText:SetMaxLines(1)
+    statusText:SetText("")
+
+    statusHintText = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    statusHintText:SetPoint("TOPLEFT", statusText, "BOTTOMLEFT", 0, -8)
+    statusHintText:SetJustifyH("LEFT")
+    statusHintText:SetWidth(520)
+    statusHintText:SetText(L.STATUS_HINT or "NatLust always loads files from Interface\\AddOns\\NatLust\\Media\\")
+
+    local audioHintText = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    audioHintText:SetPoint("TOPLEFT", statusHintText, "BOTTOMLEFT", 0, -12)
+    audioHintText:SetJustifyH("LEFT")
+    audioHintText:SetWidth(560)
+    audioHintText:SetText(L.AUDIO_HINT or "Recommended audio format for WoW: MP3, 44.1 kHz, 128/192 kbps, Stereo, minimal metadata, no embedded cover art.")
 
     settingsPanel:SetScript("OnShow", function()
         RefreshPathInputs()

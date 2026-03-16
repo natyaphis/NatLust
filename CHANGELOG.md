@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 1.0.4
+
+- Allowed the sound file field to be left empty to disable audio playback
+- Clarified the texture and sound example text for empty-field behavior
+- Split the transient settings status line from the persistent Media folder hint
+- Fixed the settings status line so it no longer shifts the content below it
+
 ## 1.0.3
 
 - Renamed the addon asset folder from `media/` to `Media/`
