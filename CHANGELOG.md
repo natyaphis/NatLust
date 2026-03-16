@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 1.0.7
+
+- Stopped tracking bundled media files in git while keeping an empty `Media/` folder in the repository
+- Simplified the README and clarified that custom texture and audio files should be placed in `NatLust/Media/`
+- Updated the project license to `All Rights Reserved`
+
 ## 1.0.6
 
 - End fake lust preview automatically when the settings panel is closed
