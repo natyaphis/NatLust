@@ -48,8 +48,8 @@ local trackedBuffs = {
 local MEDIA_PREFIX = "Interface\\AddOns\\NatLust\\Media\\"
 
 local defaults = {
-    texturePath = "pedro.tga",
-    soundPath = "pedro.mp3",
+    texturePath = "default.tga",
+    soundPath = "default.mp3",
     point = "CENTER",
     relativePoint = "CENTER",
     x = 0,
@@ -64,8 +64,8 @@ local defaults = {
     strata = "HIGH",
     level = 10,
     enableAnimation = true,
-    spriteColumns = 8,
-    spriteRows = 4,
+    spriteColumns = 4,
+    spriteRows = 8,
     spriteFrames = 32,
     spriteFPS = 6,
 }
@@ -320,10 +320,13 @@ StopVisual = function()
     visualTexture:Hide()
 
     if unlockState then
+        visualFrame:SetBackdropColor(0, 0, 0, 0.15)
         visualFrame:SetBackdropBorderColor(0, 1, 0, 0.9)
         anchorLabel:Show()
         visualFrame:Show()
     else
+        visualFrame:SetBackdropColor(0, 0, 0, 0)
+        visualFrame:SetBackdropBorderColor(0, 0, 0, 0)
         visualFrame:Hide()
     end
 end
@@ -348,6 +351,8 @@ StartVisual = function()
     end
 
     visualFrame:Show()
+    visualFrame:SetBackdropColor(0, 0, 0, 0)
+    visualFrame:SetBackdropBorderColor(0, 0, 0, 0)
     visualTexture:Show()
     StartSpriteAnimation()
 
@@ -368,8 +373,11 @@ StartVisual = function()
     end
 
     if unlockState then
+        visualFrame:SetBackdropColor(0, 0, 0, 0.15)
         visualFrame:SetBackdropBorderColor(1, 0.82, 0, 0.9)
         anchorLabel:Show()
+    else
+        anchorLabel:Hide()
     end
 end
 
@@ -446,6 +454,7 @@ local function SetUnlocked(enabled)
 
     if unlockState then
         ApplyVisualConfig()
+        visualFrame:SetBackdropColor(0, 0, 0, 0.15)
         visualFrame:SetBackdropBorderColor(0, 1, 0, 0.9)
         visualFrame:Show()
         anchorLabel:Show()
@@ -455,7 +464,8 @@ local function SetUnlocked(enabled)
     else
         anchorLabel:Hide()
         if activeState or testState then
-            visualFrame:SetBackdropBorderColor(1, 0.82, 0, 0.9)
+            visualFrame:SetBackdropColor(0, 0, 0, 0)
+            visualFrame:SetBackdropBorderColor(0, 0, 0, 0)
             visualTexture:Show()
             visualFrame:Show()
         else
@@ -492,8 +502,8 @@ local function CreateVisualFrame()
         edgeSize = 8,
         insets = { left = 2, right = 2, top = 2, bottom = 2 },
     })
-    visualFrame:SetBackdropColor(0, 0, 0, 0.15)
-    visualFrame:SetBackdropBorderColor(0, 1, 0, 0.9)
+    visualFrame:SetBackdropColor(0, 0, 0, 0)
+    visualFrame:SetBackdropBorderColor(0, 0, 0, 0)
     visualFrame:Hide()
 
     visualFrame:SetScript("OnDragStart", function(self)
@@ -607,11 +617,12 @@ local function CreateValueSlider(parent, anchor, labelText, minValue, maxValue, 
     slider.High:Hide()
 
     slider.ValueBox = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-    slider.ValueBox:SetSize(56, 26)
+    slider.ValueBox:SetSize(64, 26)
     slider.ValueBox:SetAutoFocus(false)
     slider.ValueBox:SetNumeric(true)
     slider.ValueBox:SetPoint("LEFT", slider, "RIGHT", 14, 0)
-    slider.ValueBox:SetTextInsets(8, 8, 0, 0)
+    slider.ValueBox:SetTextInsets(4, 4, 0, 0)
+    slider.ValueBox:SetJustifyH("CENTER")
     slider.ValueBox:SetText(tostring(minValue))
 
     slider.ValueBox:SetScript("OnEnterPressed", function(self)
@@ -633,6 +644,20 @@ local function CreateValueSlider(parent, anchor, labelText, minValue, maxValue, 
     end)
 
     return slider
+end
+
+local function UpdateSizeSliderDisplay(slider, labelText, value)
+    if not slider then
+        return
+    end
+
+    if slider.Text then
+        slider.Text:SetText(string.format("%s: %d", labelText, value))
+    end
+
+    if slider.ValueBox then
+        slider.ValueBox:SetText(tostring(value))
+    end
 end
 
 local function ShowStatusMessage(text)
@@ -759,12 +784,8 @@ RefreshPathInputs = function()
     fpsBox:SetCursorPosition(0)
     widthSlider:SetValue(db.width or defaults.width)
     heightSlider:SetValue(db.height or defaults.height)
-    if widthSlider.ValueBox then
-        widthSlider.ValueBox:SetText(tostring(db.width or defaults.width))
-    end
-    if heightSlider.ValueBox then
-        heightSlider.ValueBox:SetText(tostring(db.height or defaults.height))
-    end
+    UpdateSizeSliderDisplay(widthSlider, L.WIDTH_LABEL or "Width", db.width or defaults.width)
+    UpdateSizeSliderDisplay(heightSlider, L.HEIGHT_LABEL or "Height", db.height or defaults.height)
 end
 
 local function CreateSettingsPanel()
@@ -855,11 +876,8 @@ local function CreateSettingsPanel()
         local db = GetConfig()
 
         db.width = width
-        if self.Text then
-            self.Text:SetText(string.format("%s: %d", L.WIDTH_LABEL or "Width", width))
-        end
-        if self.ValueBox and not self.ValueBox:HasFocus() then
-            self.ValueBox:SetText(tostring(width))
+        if not (self.ValueBox and self.ValueBox:HasFocus()) then
+            UpdateSizeSliderDisplay(self, L.WIDTH_LABEL or "Width", width)
         end
 
         ApplyVisualConfig()
@@ -879,11 +897,8 @@ local function CreateSettingsPanel()
         local db = GetConfig()
 
         db.height = height
-        if self.Text then
-            self.Text:SetText(string.format("%s: %d", L.HEIGHT_LABEL or "Height", height))
-        end
-        if self.ValueBox and not self.ValueBox:HasFocus() then
-            self.ValueBox:SetText(tostring(height))
+        if not (self.ValueBox and self.ValueBox:HasFocus()) then
+            UpdateSizeSliderDisplay(self, L.HEIGHT_LABEL or "Height", height)
         end
 
         ApplyVisualConfig()

@@ -4,7 +4,7 @@ addonTable.L = addonTable.L or {}
 local L = addonTable.L
 
 L.ADDON_TITLE = "NatLust"
-L.SUBTITLE = "Enter file names only. NatLust will automatically read them from Interface\\AddOns\\NatLust\\Media\\"
+L.SUBTITLE = "Enter file names only.\nNatLust will automatically read them from Interface\\AddOns\\NatLust\\Media\\"
 L.TEXTURE_FILE = "Texture File"
 L.SOUND_FILE = "Sound File"
 L.SPRITE_SECTION = "Sprite Animation Settings"

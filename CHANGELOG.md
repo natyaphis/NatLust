@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 1.1.0
+
+- Changed the default texture and sound file names to `default.tga` and `default.mp3`
+- Split the settings subtitle into two lines for a cleaner layout
+- Removed the visible frame border and backdrop tint during normal animation playback
+- Improved the width and height numeric input display so values stay readable while editing and dragging
+
 ## 1.0.9
 
 - Added a dedicated "Sprite Animation Settings" section label above the row, column, frame, and FPS controls

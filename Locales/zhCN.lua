@@ -8,7 +8,7 @@ addonTable.L = addonTable.L or {}
 local L = addonTable.L
 
 L.ADDON_TITLE = "NatLust"
-L.SUBTITLE = "这里只输入文件名。NatLust 会自动从 Interface\\AddOns\\NatLust\\Media\\ 读取文件。"
+L.SUBTITLE = "这里只输入文件名。\nNatLust 会自动从 Interface\\AddOns\\NatLust\\Media\\ 读取文件。"
 L.TEXTURE_FILE = "材质文件"
 L.SOUND_FILE = "音频文件"
 L.SPRITE_SECTION = "逐帧动画设置"
