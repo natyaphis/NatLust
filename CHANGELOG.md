@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 1.0.5
+
+- Added sprite sheet playback controls for columns, rows, frames, and FPS
+- Added width and height controls with live preview in the settings panel
+- Improved ElvUI skin support for the settings controls, including size controls
+- Reworked the settings panel layout to reduce crowding and keep related controls aligned
+- Updated the default sprite settings for the bundled `pedro.tga` sheet
+- Adjusted sprite sheet texcoord handling for the bundled `pedro.tga` content area
+
 ## 1.0.4
 
 - Allowed the sound file field to be left empty to disable audio playback

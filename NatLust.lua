@@ -14,6 +14,14 @@ local settingsCategory
 local settingsPanel
 local texturePathBox
 local soundPathBox
+local columnsBox
+local rowsBox
+local framesBox
+local fpsBox
+local widthSlider
+local heightSlider
+local widthValueBox
+local heightValueBox
 local statusText
 local statusHintText
 local testToggleButton
@@ -22,9 +30,12 @@ local applySettingsButton
 local defaultSettingsButton
 local StartVisual
 local StopVisual
+local GetSpriteSettings
 local UpdateToggleButtonLabels
 local RefreshPathInputs
 local isElvUISkinned = false
+local spriteElapsed = 0
+local currentSpriteFrame = 1
 
 local trackedBuffs = {
     [2825] = true, -- Bloodlust
@@ -43,8 +54,8 @@ local defaults = {
     relativePoint = "CENTER",
     x = 0,
     y = 0,
-    width = 100,
-    height = 100,
+    width = 60,
+    height = 60,
     alpha = 1,
     colorR = 1,
     colorG = 1,
@@ -53,6 +64,10 @@ local defaults = {
     strata = "HIGH",
     level = 10,
     enableAnimation = true,
+    spriteColumns = 4,
+    spriteRows = 8,
+    spriteFrames = 32,
+    spriteFPS = 12,
 }
 
 local function CopyDefaults(target, source)
@@ -135,6 +150,8 @@ local function NormalizePaths()
     else
         db.soundPath = ExtractFileName(db.soundPath, "")
     end
+
+    GetSpriteSettings()
 end
 
 local function SaveFramePosition()
@@ -144,6 +161,110 @@ local function SaveFramePosition()
     db.relativePoint = relativePoint or defaults.relativePoint
     db.x = x or defaults.x
     db.y = y or defaults.y
+end
+
+local function ClampInteger(value, fallback, minimum)
+    local number = tonumber(value)
+    if not number then
+        return fallback
+    end
+
+    number = math.floor(number + 0.5)
+    if minimum and number < minimum then
+        return minimum
+    end
+
+    return number
+end
+
+GetSpriteSettings = function()
+    local db = GetConfig()
+    local columns = ClampInteger(db.spriteColumns, defaults.spriteColumns, 1)
+    local rows = ClampInteger(db.spriteRows, defaults.spriteRows, 1)
+    local frames = ClampInteger(db.spriteFrames, defaults.spriteFrames, 1)
+    local fps = ClampInteger(db.spriteFPS, defaults.spriteFPS, 1)
+    local maxFrames = columns * rows
+
+    if frames > maxFrames then
+        frames = maxFrames
+    end
+
+    db.spriteColumns = columns
+    db.spriteRows = rows
+    db.spriteFrames = frames
+    db.spriteFPS = fps
+
+    return columns, rows, frames, fps
+end
+
+local function SetSpriteFrame(frameIndex)
+    local db = GetConfig()
+    local columns, rows, frames = GetSpriteSettings()
+    local frame = math.min(math.max(frameIndex or 1, 1), frames)
+    local column = (frame - 1) % columns
+    local row = math.floor((frame - 1) / columns)
+    local cropLeft = 0
+    local cropRight = 1
+    local cropTop = 0
+    local cropBottom = 1
+    local width
+    local height
+    local left
+    local right
+    local top
+    local bottom
+
+    -- pedro.tga only uses the top-left 768x1536 area of a 1024x2048 sheet.
+    if db.texturePath == "pedro.tga" then
+        cropRight = 0.75
+        cropBottom = 0.75
+    end
+
+    width = (cropRight - cropLeft) / columns
+    height = (cropBottom - cropTop) / rows
+    left = cropLeft + (column * width)
+    right = left + width
+    top = cropTop + (row * height)
+    bottom = top + height
+
+    currentSpriteFrame = frame
+    visualTexture:SetTexCoord(left, right, top, bottom)
+end
+
+local function StopSpriteAnimation()
+    spriteElapsed = 0
+    currentSpriteFrame = 1
+    visualFrame:SetScript("OnUpdate", nil)
+    visualTexture:SetTexCoord(0, 1, 0, 1)
+end
+
+local function StartSpriteAnimation()
+    local _, _, frames, fps = GetSpriteSettings()
+
+    spriteElapsed = 0
+    currentSpriteFrame = 1
+
+    if frames <= 1 then
+        visualTexture:SetTexCoord(0, 1, 0, 1)
+        visualFrame:SetScript("OnUpdate", nil)
+        return
+    end
+
+    SetSpriteFrame(1)
+
+    visualFrame:SetScript("OnUpdate", function(_, elapsed)
+        local frameDuration = 1 / fps
+
+        spriteElapsed = spriteElapsed + elapsed
+        while spriteElapsed >= frameDuration do
+            spriteElapsed = spriteElapsed - frameDuration
+            currentSpriteFrame = currentSpriteFrame + 1
+            if currentSpriteFrame > frames then
+                currentSpriteFrame = 1
+            end
+            SetSpriteFrame(currentSpriteFrame)
+        end
+    end)
 end
 
 local function ApplyVisualConfig()
@@ -195,8 +316,7 @@ StopVisual = function()
         visualAnimation:Stop()
     end
 
-    visualFrame:SetScript("OnUpdate", nil)
-    visualTexture:SetTexCoord(0, 1, 0, 1)
+    StopSpriteAnimation()
     visualTexture:Hide()
 
     if unlockState then
@@ -228,6 +348,7 @@ StartVisual = function()
 
     visualFrame:Show()
     visualTexture:Show()
+    StartSpriteAnimation()
 
     if db.enableAnimation and visualAnimation then
         visualAnimation:Stop()
@@ -431,9 +552,9 @@ local function CreateSettingLabel(parent, text, anchor, offsetX, offsetY)
     return label
 end
 
-local function CreatePathEditBox(parent, anchor, initialText, onCommit)
+local function CreatePathEditBox(parent, anchor, initialText, onCommit, width)
     local editBox = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-    editBox:SetSize(260, 30)
+    editBox:SetSize(width or 260, 30)
     editBox:SetAutoFocus(false)
     editBox:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -8)
     editBox:SetTextInsets(8, 8, 0, 0)
@@ -454,6 +575,57 @@ local function CreatePathEditBox(parent, anchor, initialText, onCommit)
     end)
 
     return editBox
+end
+
+local function CreateValueSlider(parent, anchor, labelText, minValue, maxValue, step)
+    local slider = CreateFrame("Slider", nil, parent, "OptionsSliderTemplate")
+    slider:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -22)
+    slider:SetMinMaxValues(minValue, maxValue)
+    slider:SetValueStep(step)
+    slider:SetObeyStepOnDrag(true)
+    slider:SetWidth(180)
+
+    slider.Text = slider:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    slider.Text:SetPoint("BOTTOMLEFT", slider, "TOPLEFT", 0, 6)
+    slider.Text:SetText(labelText)
+
+    slider.Low = slider:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    slider.Low:SetPoint("TOPLEFT", slider, "BOTTOMLEFT", 0, -2)
+    slider.Low:SetText("")
+    slider.Low:Hide()
+
+    slider.High = slider:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    slider.High:SetPoint("TOPRIGHT", slider, "BOTTOMRIGHT", 0, -2)
+    slider.High:SetText("")
+    slider.High:Hide()
+
+    slider.ValueBox = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+    slider.ValueBox:SetSize(56, 26)
+    slider.ValueBox:SetAutoFocus(false)
+    slider.ValueBox:SetNumeric(true)
+    slider.ValueBox:SetPoint("LEFT", slider, "RIGHT", 14, 0)
+    slider.ValueBox:SetTextInsets(8, 8, 0, 0)
+    slider.ValueBox:SetText(tostring(minValue))
+
+    slider.ValueBox:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+        local value = ClampInteger(self:GetText(), slider:GetValue(), minValue)
+        value = math.min(maxValue, math.max(minValue, value))
+        slider:SetValue(value)
+    end)
+
+    slider.ValueBox:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+        self:SetText(tostring(math.floor(slider:GetValue() + 0.5)))
+    end)
+
+    slider.ValueBox:SetScript("OnEditFocusLost", function(self)
+        local value = ClampInteger(self:GetText(), slider:GetValue(), minValue)
+        value = math.min(maxValue, math.max(minValue, value))
+        slider:SetValue(value)
+    end)
+
+    return slider
 end
 
 local function ShowStatusMessage(text)
@@ -483,6 +655,42 @@ local function ApplyElvUISkin()
 
     if soundPathBox and S.HandleEditBox then
         S:HandleEditBox(soundPathBox)
+    end
+
+    if columnsBox and S.HandleEditBox then
+        S:HandleEditBox(columnsBox)
+    end
+
+    if rowsBox and S.HandleEditBox then
+        S:HandleEditBox(rowsBox)
+    end
+
+    if framesBox and S.HandleEditBox then
+        S:HandleEditBox(framesBox)
+    end
+
+    if fpsBox and S.HandleEditBox then
+        S:HandleEditBox(fpsBox)
+    end
+
+    if widthSlider and S.HandleSliderFrame then
+        S:HandleSliderFrame(widthSlider)
+    elseif widthSlider and S.HandleSlider then
+        S:HandleSlider(widthSlider)
+    end
+
+    if heightSlider and S.HandleSliderFrame then
+        S:HandleSliderFrame(heightSlider)
+    elseif heightSlider and S.HandleSlider then
+        S:HandleSlider(heightSlider)
+    end
+
+    if widthSlider and widthSlider.ValueBox and S.HandleEditBox then
+        S:HandleEditBox(widthSlider.ValueBox)
+    end
+
+    if heightSlider and heightSlider.ValueBox and S.HandleEditBox then
+        S:HandleEditBox(heightSlider.ValueBox)
     end
 
     if applySettingsButton then
@@ -523,7 +731,7 @@ local function OpenSettingsPanel()
 end
 
 RefreshPathInputs = function()
-    if not texturePathBox or not soundPathBox then
+    if not texturePathBox or not soundPathBox or not columnsBox or not rowsBox or not framesBox or not fpsBox or not widthSlider or not heightSlider then
         return
     end
 
@@ -534,6 +742,22 @@ RefreshPathInputs = function()
     texturePathBox:SetCursorPosition(0)
     soundPathBox:SetText(GetDisplayValue(db.soundPath, defaults.soundPath))
     soundPathBox:SetCursorPosition(0)
+    columnsBox:SetText(tostring(db.spriteColumns or defaults.spriteColumns))
+    columnsBox:SetCursorPosition(0)
+    rowsBox:SetText(tostring(db.spriteRows or defaults.spriteRows))
+    rowsBox:SetCursorPosition(0)
+    framesBox:SetText(tostring(db.spriteFrames or defaults.spriteFrames))
+    framesBox:SetCursorPosition(0)
+    fpsBox:SetText(tostring(db.spriteFPS or defaults.spriteFPS))
+    fpsBox:SetCursorPosition(0)
+    widthSlider:SetValue(db.width or defaults.width)
+    heightSlider:SetValue(db.height or defaults.height)
+    if widthSlider.ValueBox then
+        widthSlider.ValueBox:SetText(tostring(db.width or defaults.width))
+    end
+    if heightSlider.ValueBox then
+        heightSlider.ValueBox:SetText(tostring(db.height or defaults.height))
+    end
 end
 
 local function CreateSettingsPanel()
@@ -553,36 +777,126 @@ local function CreateSettingsPanel()
     subtitle:SetJustifyH("LEFT")
     subtitle:SetText(L.SUBTITLE or "Enter file names only. NatLust will load them from Interface\\AddOns\\NatLust\\Media\\")
 
-    local textureLabel = CreateSettingLabel(settingsPanel, L.TEXTURE_FILE or "Texture File", subtitle, 0, -24)
+    local leftColumnX = 0
+    local rightColumnX = 300
+    local smallFieldStep = 122
+
+    local textureLabel = CreateSettingLabel(settingsPanel, L.TEXTURE_FILE or "Texture File", subtitle, leftColumnX, -24)
     texturePathBox = CreatePathEditBox(settingsPanel, textureLabel, GetDisplayPath(GetConfig().texturePath, defaults.texturePath), function(value)
         GetConfig().texturePath = strtrim(value or "")
-    end)
+    end, 240)
     texturePathBox:SetText(GetDisplayPath(GetConfig().texturePath, defaults.texturePath))
 
     local textureHelp = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     textureHelp:SetPoint("TOPLEFT", texturePathBox, "BOTTOMLEFT", 4, -6)
     textureHelp:SetJustifyH("LEFT")
+    textureHelp:SetWidth(240)
     textureHelp:SetText(L.TEXTURE_EXAMPLE or "Example: pedro.tga")
 
-    local soundLabel = CreateSettingLabel(settingsPanel, L.SOUND_FILE or "Sound File", textureHelp, 0, -18)
+    local soundLabel = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    soundLabel:SetPoint("TOPLEFT", textureLabel, "TOPLEFT", rightColumnX, 0)
+    soundLabel:SetJustifyH("LEFT")
+    soundLabel:SetText(L.SOUND_FILE or "Sound File")
     soundPathBox = CreatePathEditBox(settingsPanel, soundLabel, GetDisplayPath(GetConfig().soundPath, defaults.soundPath), function(value)
         GetConfig().soundPath = strtrim(value or "")
-    end)
+    end, 240)
     soundPathBox:SetText(GetDisplayValue(GetConfig().soundPath, defaults.soundPath))
 
     local soundHelp = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     soundHelp:SetPoint("TOPLEFT", soundPathBox, "BOTTOMLEFT", 4, -6)
     soundHelp:SetJustifyH("LEFT")
+    soundHelp:SetWidth(240)
     soundHelp:SetText(L.SOUND_EXAMPLE or "Example: pedro.mp3")
+
+    local columnsLabel = CreateSettingLabel(settingsPanel, L.SPRITE_COLUMNS or "Columns", soundHelp, -300, -22)
+    columnsBox = CreatePathEditBox(settingsPanel, columnsLabel, tostring(GetConfig().spriteColumns or defaults.spriteColumns), function(value)
+        GetConfig().spriteColumns = ClampInteger(value, defaults.spriteColumns, 1)
+    end, 80)
+
+    local rowsLabel = CreateSettingLabel(settingsPanel, L.SPRITE_ROWS or "Rows", soundHelp, -300 + smallFieldStep, -22)
+    rowsBox = CreatePathEditBox(settingsPanel, rowsLabel, tostring(GetConfig().spriteRows or defaults.spriteRows), function(value)
+        GetConfig().spriteRows = ClampInteger(value, defaults.spriteRows, 1)
+    end, 80)
+
+    local framesLabel = CreateSettingLabel(settingsPanel, L.SPRITE_FRAMES or "Frames", soundHelp, -300 + (smallFieldStep * 2), -22)
+    framesBox = CreatePathEditBox(settingsPanel, framesLabel, tostring(GetConfig().spriteFrames or defaults.spriteFrames), function(value)
+        GetConfig().spriteFrames = ClampInteger(value, defaults.spriteFrames, 1)
+    end, 80)
+
+    local fpsLabel = CreateSettingLabel(settingsPanel, L.SPRITE_FPS or "FPS", soundHelp, -300 + (smallFieldStep * 3), -22)
+    fpsBox = CreatePathEditBox(settingsPanel, fpsLabel, tostring(GetConfig().spriteFPS or defaults.spriteFPS), function(value)
+        GetConfig().spriteFPS = ClampInteger(value, defaults.spriteFPS, 1)
+    end, 80)
+
+    local spriteHelp = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    spriteHelp:SetPoint("TOPLEFT", columnsBox, "BOTTOMLEFT", 4, -6)
+    spriteHelp:SetJustifyH("LEFT")
+    spriteHelp:SetWidth(520)
+    spriteHelp:SetText(L.SPRITE_HINT or "Sprite sheet playback uses left-to-right, top-to-bottom order.")
+
+    widthSlider = CreateValueSlider(settingsPanel, spriteHelp, L.WIDTH_LABEL or "Width: 50", 20, 256, 1)
+    widthSlider:ClearAllPoints()
+    widthSlider:SetPoint("TOPLEFT", spriteHelp, "BOTTOMLEFT", 0, -30)
+    widthValueBox = widthSlider.ValueBox
+    widthSlider:SetScript("OnValueChanged", function(self, value)
+        local width = math.floor((value or defaults.width) + 0.5)
+        local db = GetConfig()
+
+        db.width = width
+        if self.Text then
+            self.Text:SetText(string.format("%s: %d", L.WIDTH_LABEL or "Width", width))
+        end
+        if self.ValueBox and not self.ValueBox:HasFocus() then
+            self.ValueBox:SetText(tostring(width))
+        end
+
+        ApplyVisualConfig()
+        if activeState or testState or unlockState then
+            visualFrame:Show()
+        end
+    end)
+
+    heightSlider = CreateValueSlider(settingsPanel, widthSlider, L.HEIGHT_LABEL or "Height: 50", 20, 256, 1)
+    heightSlider:ClearAllPoints()
+    heightSlider:SetPoint("TOPLEFT", widthSlider, "BOTTOMLEFT", 0, -46)
+    heightSlider.ValueBox:ClearAllPoints()
+    heightSlider.ValueBox:SetPoint("LEFT", heightSlider, "RIGHT", 14, 0)
+    heightValueBox = heightSlider.ValueBox
+    heightSlider:SetScript("OnValueChanged", function(self, value)
+        local height = math.floor((value or defaults.height) + 0.5)
+        local db = GetConfig()
+
+        db.height = height
+        if self.Text then
+            self.Text:SetText(string.format("%s: %d", L.HEIGHT_LABEL or "Height", height))
+        end
+        if self.ValueBox and not self.ValueBox:HasFocus() then
+            self.ValueBox:SetText(tostring(height))
+        end
+
+        ApplyVisualConfig()
+        if activeState or testState or unlockState then
+            visualFrame:Show()
+        end
+    end)
 
     applySettingsButton = CreateFrame("Button", nil, settingsPanel, "UIPanelButtonTemplate")
     applySettingsButton:SetSize(120, 24)
-    applySettingsButton:SetPoint("TOPLEFT", soundHelp, "BOTTOMLEFT", 0, -16)
+    applySettingsButton:SetPoint("TOPLEFT", heightSlider, "BOTTOMLEFT", 0, -32)
     applySettingsButton:SetText(L.APPLY or "Apply")
     applySettingsButton:SetScript("OnClick", function()
         GetConfig().texturePath = strtrim(texturePathBox:GetText() or "")
         GetConfig().soundPath = strtrim(soundPathBox:GetText() or "")
+        GetConfig().spriteColumns = ClampInteger(columnsBox:GetText(), defaults.spriteColumns, 1)
+        GetConfig().spriteRows = ClampInteger(rowsBox:GetText(), defaults.spriteRows, 1)
+        GetConfig().spriteFrames = ClampInteger(framesBox:GetText(), defaults.spriteFrames, 1)
+        GetConfig().spriteFPS = ClampInteger(fpsBox:GetText(), defaults.spriteFPS, 1)
+        GetSpriteSettings()
         ApplyVisualConfig()
+        if activeState or testState then
+            StartVisual()
+        end
+        RefreshPathInputs()
         ShowStatusMessage(L.SETTINGS_APPLIED or "Settings applied.")
     end)
 
@@ -593,7 +907,14 @@ local function CreateSettingsPanel()
     defaultSettingsButton:SetScript("OnClick", function()
         GetConfig().texturePath = defaults.texturePath
         GetConfig().soundPath = defaults.soundPath
+        GetConfig().spriteColumns = defaults.spriteColumns
+        GetConfig().spriteRows = defaults.spriteRows
+        GetConfig().spriteFrames = defaults.spriteFrames
+        GetConfig().spriteFPS = defaults.spriteFPS
+        GetConfig().width = defaults.width
+        GetConfig().height = defaults.height
         RefreshPathInputs()
+        ApplyVisualConfig()
         ShowStatusMessage(L.DEFAULTS_RESTORED or "Default file names restored.")
     end)
 
