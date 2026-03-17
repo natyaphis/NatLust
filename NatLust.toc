@@ -3,7 +3,10 @@
 ## Notes: Plays custom audio and visuals when the player has a lust effect
 ## Notes-zhCN: 玩家获得嗜血类增益时播放自定义音频和视觉效果
 ## Author: Codex
-## Version: 1.1.1
+## Version: 1.1.2
+## IconTexture: Interface\AddOns\NatLust\Media\icon.png
+## Category: Combat
+## Category-zhCN: 战斗
 ## SavedVariables: NatLustDB
 
 Locales\enUS.lua

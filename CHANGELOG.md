@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 1.1.2
+
+- Set the addon list icon to load from `Media/icon.png`
+- Added the addon list category metadata for Combat
+
 ## 1.1.1
 
 - Fixed release packaging so the zip keeps an empty `Media/` folder after removing `.gitkeep`
