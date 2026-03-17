@@ -25,10 +25,14 @@ jobs:
             --exclude ".git/" \
             --exclude ".github/" \
             --exclude ".vscode/" \
+            --exclude ".idea/" \
             --exclude ".gitignore" \
             --exclude ".gitattributes" \
             --exclude "package/" \
             --exclude "CHANGELOG.md" \
+            --exclude "AGENTS.md" \
+            --exclude "scripts/" \
+            --exclude "Asset/" \
             --exclude "Media/*" \
             --include "Media/icon.png" \
             --include "Media/" \
