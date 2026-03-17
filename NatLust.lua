@@ -48,8 +48,8 @@ local trackedBuffs = {
 local MEDIA_PREFIX = "Interface\\AddOns\\NatLust\\Media\\"
 
 local defaults = {
-    texturePath = "default.tga",
-    soundPath = "default.mp3",
+    texturePath = "",
+    soundPath = "",
     point = "CENTER",
     relativePoint = "CENTER",
     x = 0,
@@ -305,8 +305,10 @@ local function StartAudio()
     local willPlay, handle = PlaySoundFile(soundPath, "Master")
     if willPlay then
         soundHandle = handle
-        print("|cff00ff98NatLust|r " .. (L.SOUND_STARTED or "Sound started: ") .. soundPath)
-    else
+        if testState then
+            print("|cff00ff98NatLust|r " .. (L.SOUND_STARTED or "Sound started: ") .. soundPath)
+        end
+    elseif testState then
         print("|cff00ff98NatLust|r " .. (L.SOUND_FAILED or "Sound load failed: ") .. soundPath)
     end
 end
@@ -344,9 +346,9 @@ StartVisual = function()
     ApplyVisualConfig()
     local texturePath = BuildMediaPath(db.texturePath)
     textureLoaded = visualTexture:SetTexture(texturePath)
-    if textureLoaded == false or textureLoaded == nil then
+    if (textureLoaded == false or textureLoaded == nil) and testState then
         print("|cff00ff98NatLust|r " .. (L.TEXTURE_FAILED or "Texture load failed: ") .. tostring(texturePath))
-    else
+    elseif testState then
         print("|cff00ff98NatLust|r " .. (L.TEXTURE_STARTED or "Texture started: ") .. texturePath)
     end
 
@@ -396,6 +398,14 @@ local function AuraMatchesSpellID(spellID)
 end
 
 local function HasTrackedAura()
+    if C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID then
+        for spellID in pairs(trackedBuffs) do
+            if C_UnitAuras.GetPlayerAuraBySpellID(spellID) then
+                return true
+            end
+        end
+    end
+
     local index = 1
     local auraData
 
@@ -440,7 +450,7 @@ local function EvaluateAuras()
     end
 
     local hasTrackedAura = HasTrackedAura()
-    if hasTrackedAura and not activeState then
+    if testState and hasTrackedAura and not activeState then
         print("|cff00ff98NatLust|r " .. (L.LUST_DETECTED or "Lust aura detected on player."))
     end
     UpdateActiveState(hasTrackedAura)
@@ -921,7 +931,7 @@ local function CreateSettingsPanel()
         GetSpriteSettings()
         ApplyVisualConfig()
         if activeState or testState then
-            StartVisual()
+            StartEffects()
         end
         RefreshPathInputs()
         ShowStatusMessage(L.SETTINGS_APPLIED or "Settings applied.")
