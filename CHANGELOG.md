@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.1.4
+
+- Released 1.1.4
+
 ## 1.1.3
 
 - Released 1.1.3

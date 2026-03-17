@@ -33,9 +33,9 @@ jobs:
             --exclude "AGENTS.md" \
             --exclude "scripts/" \
             --exclude "Asset/" \
-            --exclude "Media/*" \
-            --include "Media/icon.png" \
             --include "Media/" \
+            --include "Media/icon.png" \
+            --exclude "Media/*" \
             ./ package/NatLust/
 
           rm -f package/NatLust/Media/.gitkeep
