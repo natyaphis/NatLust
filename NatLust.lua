@@ -35,8 +35,10 @@ local EvaluateAuras
 local isElvUISkinned = false
 local spriteElapsed = 0
 local currentSpriteFrame = 1
+local playerGUID
 local activeExpireTimer
 local pendingAuraTimer
+local pendingTriggerRetry
 local hasteWatcherReady = false
 local lastHasteValue = 0
 
@@ -318,6 +320,8 @@ local function ClearAuraTimers()
     activeExpireTimer = nil
     CancelTimer(pendingAuraTimer)
     pendingAuraTimer = nil
+    CancelTimer(pendingTriggerRetry)
+    pendingTriggerRetry = nil
 end
 
 local function StartAudio()
@@ -540,6 +544,8 @@ end
 
 local function UpdateActiveState(nextState, expirationTime)
     if nextState then
+        CancelTimer(pendingTriggerRetry)
+        pendingTriggerRetry = nil
         ScheduleExpireCheck(expirationTime)
     else
         ClearAuraTimers()
@@ -566,6 +572,57 @@ EvaluateAuras = function()
     UpdateActiveState(hasTrackedAura, expirationTime)
 end
 
+local function ScheduleAuraRescanSeries(initialDelay, attemptsRemaining)
+    CancelTimer(pendingTriggerRetry)
+
+    pendingTriggerRetry = C_Timer.NewTimer(initialDelay or 0.1, function()
+        pendingTriggerRetry = nil
+
+        EvaluateAuras()
+        if activeState or testState then
+            return
+        end
+
+        if (attemptsRemaining or 0) > 1 then
+            ScheduleAuraRescanSeries(0.2, attemptsRemaining - 1)
+        end
+    end)
+end
+
+local function ScheduleTriggerConfirmation(initialDelay)
+    ScheduleAuraRescanSeries(initialDelay or 0.1, 8)
+end
+
+local function EvaluateFromCombatLog(subEvent, destGUID, spellID)
+    if testState or not playerGUID then
+        return
+    end
+
+    if AuraMatchesSpellID(spellID) and subEvent == "SPELL_CAST_SUCCESS" then
+        ScheduleTriggerConfirmation(0.05)
+        return
+    end
+
+    if destGUID ~= playerGUID then
+        return
+    end
+
+    if AuraMatchesSpellID(spellID) and (subEvent == "SPELL_AURA_APPLIED" or subEvent == "SPELL_AURA_REFRESH") then
+        ScheduleTriggerConfirmation(0)
+        return
+    end
+
+    if AuraMatchesSpellID(spellID) and subEvent == "SPELL_AURA_REMOVED" then
+        EvaluateAuras()
+        return
+    end
+
+    if ExhaustionMatchesSpellID(spellID) and (subEvent == "SPELL_AURA_APPLIED" or subEvent == "SPELL_AURA_REFRESH") then
+        ScheduleTriggerConfirmation(0.05)
+        return
+    end
+end
+
 local function VerifyFreshTrigger()
     if testState or not hasteWatcherReady then
         return
@@ -576,7 +633,7 @@ local function VerifyFreshTrigger()
         return
     end
 
-    EvaluateAuras()
+    ScheduleTriggerConfirmation(0)
 end
 
 local function ScheduleFreshTriggerVerification(delay)
@@ -1174,6 +1231,7 @@ end
 local function Initialize()
     GetConfig()
     NormalizePaths()
+    playerGUID = UnitGUID("player")
     CreateVisualFrame()
     CreateSettingsPanel()
     SetUnlocked(false)
@@ -1191,6 +1249,7 @@ local function Initialize()
     SlashCmdList.NATLUST = HandleSlashCommand
 
     addon:RegisterEvent("UNIT_AURA")
+    addon:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
     addon:RegisterEvent("COMBAT_RATING_UPDATE")
     addon:RegisterEvent("PLAYER_ENTERING_WORLD")
     addon:RegisterEvent("PLAYER_DEAD")
@@ -1217,12 +1276,19 @@ addon:SetScript("OnEvent", function(_, event, ...)
         return
     end
 
+    if event == "COMBAT_LOG_EVENT_UNFILTERED" then
+        local _, subEvent, _, _, _, _, _, destGUID, _, _, _, spellID = CombatLogGetCurrentEventInfo()
+        EvaluateFromCombatLog(subEvent, destGUID, spellID)
+        return
+    end
+
     if event == "COMBAT_RATING_UPDATE" then
         RefreshHasteWatcher()
         return
     end
 
     if event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_DEAD" or event == "PLAYER_ALIVE" then
+        playerGUID = UnitGUID("player")
         RefreshHasteWatcher(true)
         EvaluateAuras()
         return
