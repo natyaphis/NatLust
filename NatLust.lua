@@ -20,8 +20,6 @@ local framesBox
 local fpsBox
 local widthSlider
 local heightSlider
-local widthValueBox
-local heightValueBox
 local statusText
 local statusHintText
 local testToggleButton
@@ -33,10 +31,14 @@ local StopVisual
 local GetSpriteSettings
 local UpdateToggleButtonLabels
 local RefreshPathInputs
+local EvaluateAuras
 local isElvUISkinned = false
 local spriteElapsed = 0
 local currentSpriteFrame = 1
-local playerGUID
+local activeExpireTimer
+local pendingAuraTimer
+local hasteWatcherReady = false
+local lastHasteValue = 0
 
 local trackedBuffs = {
     [2825] = true, -- Bloodlust
@@ -46,6 +48,21 @@ local trackedBuffs = {
     [390386] = true, -- Fury of the Aspects
     [466904] = true, -- Harrier's Cry
 }
+
+local trackedExhaustionDebuffs = {
+    [57723] = true, -- Exhaustion
+    [57724] = true, -- Sated
+    [80354] = true, -- Temporal Displacement
+    [95809] = true, -- Insanity
+    [160455] = true, -- Fatigued
+    [207400] = true, -- Shamanic Exhaustion
+    [264689] = true, -- Fatigued
+    [390435] = true, -- Exhausted
+}
+
+local HASTE_THRESHOLD = 30
+local EXHAUSTION_DURATION = 600
+local FRESH_WINDOW = 5
 
 local MEDIA_PREFIX = "Interface\\AddOns\\NatLust\\Media\\"
 
@@ -290,6 +307,19 @@ local function StopAudio()
     end
 end
 
+local function CancelTimer(timer)
+    if timer and timer.Cancel then
+        timer:Cancel()
+    end
+end
+
+local function ClearAuraTimers()
+    CancelTimer(activeExpireTimer)
+    activeExpireTimer = nil
+    CancelTimer(pendingAuraTimer)
+    pendingAuraTimer = nil
+end
+
 local function StartAudio()
     local db = GetConfig()
 
@@ -401,11 +431,16 @@ local function AuraMatchesSpellID(spellID)
     return spellID and trackedBuffs[spellID] or false
 end
 
-local function HasTrackedAura()
+local function ExhaustionMatchesSpellID(spellID)
+    return spellID and trackedExhaustionDebuffs[spellID] or false
+end
+
+local function GetTrackedAuraState()
     if C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID then
         for spellID in pairs(trackedBuffs) do
-            if C_UnitAuras.GetPlayerAuraBySpellID(spellID) then
-                return true
+            local aura = C_UnitAuras.GetPlayerAuraBySpellID(spellID)
+            if aura then
+                return true, aura.expirationTime
             end
         end
     end
@@ -417,20 +452,20 @@ local function HasTrackedAura()
         if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
             auraData = C_UnitAuras.GetAuraDataByIndex("player", index, "HELPFUL")
             if not auraData then
-                return false
+                return false, nil
             end
 
             if AuraMatchesSpellID(auraData.spellId) then
-                return true
+                return true, auraData.expirationTime
             end
         else
-            local _, _, _, _, _, _, _, _, _, spellID = UnitBuff("player", index)
+            local _, _, _, _, _, expirationTime, _, _, _, spellID = UnitBuff("player", index)
             if not spellID then
-                return false
+                return false, nil
             end
 
             if AuraMatchesSpellID(spellID) then
-                return true
+                return true, expirationTime
             end
         end
 
@@ -438,7 +473,78 @@ local function HasTrackedAura()
     end
 end
 
-local function UpdateActiveState(nextState)
+local function CheckExhaustionFresh()
+    local now = GetTime()
+
+    if C_UnitAuras and C_UnitAuras.GetPlayerAuraBySpellID then
+        for spellID in pairs(trackedExhaustionDebuffs) do
+            local aura = C_UnitAuras.GetPlayerAuraBySpellID(spellID)
+            if aura and aura.expirationTime then
+                local remaining = aura.expirationTime - now
+                if remaining >= (EXHAUSTION_DURATION - FRESH_WINDOW) then
+                    return true, aura.expirationTime
+                end
+            end
+        end
+    end
+
+    local index = 1
+
+    while true do
+        local spellID
+        local expirationTime
+
+        if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+            local auraData = C_UnitAuras.GetAuraDataByIndex("player", index, "HARMFUL")
+            if not auraData then
+                return false, nil
+            end
+
+            spellID = auraData.spellId
+            expirationTime = auraData.expirationTime
+        else
+            local _, _, _, _, _, expTime, _, _, _, debuffSpellID = UnitDebuff("player", index)
+            if not debuffSpellID then
+                return false, nil
+            end
+
+            spellID = debuffSpellID
+            expirationTime = expTime
+        end
+
+        if ExhaustionMatchesSpellID(spellID) and expirationTime then
+            local remaining = expirationTime - now
+            if remaining >= (EXHAUSTION_DURATION - FRESH_WINDOW) then
+                return true, expirationTime
+            end
+        end
+
+        index = index + 1
+    end
+end
+
+local function ScheduleExpireCheck(expirationTime)
+    CancelTimer(activeExpireTimer)
+    activeExpireTimer = nil
+
+    if not expirationTime or expirationTime <= 0 then
+        return
+    end
+
+    local delay = math.max(0.05, expirationTime - GetTime() + 0.15)
+    activeExpireTimer = C_Timer.NewTimer(delay, function()
+        activeExpireTimer = nil
+        EvaluateAuras()
+    end)
+end
+
+local function UpdateActiveState(nextState, expirationTime)
+    if nextState then
+        ScheduleExpireCheck(expirationTime)
+    else
+        ClearAuraTimers()
+    end
+
     if nextState and not activeState then
         activeState = true
         StartEffects()
@@ -448,30 +554,52 @@ local function UpdateActiveState(nextState)
     end
 end
 
-local function EvaluateAuras()
+EvaluateAuras = function()
     if testState then
         return
     end
 
-    local hasTrackedAura = HasTrackedAura()
+    local hasTrackedAura, expirationTime = GetTrackedAuraState()
     if testState and hasTrackedAura and not activeState then
         print("|cff00ff98NatLust|r " .. (L.LUST_DETECTED or "Lust aura detected on player."))
     end
-    UpdateActiveState(hasTrackedAura)
+    UpdateActiveState(hasTrackedAura, expirationTime)
 end
 
-local function EvaluateFromCombatLog(subEvent, destGUID, spellID)
-    if testState or not playerGUID or destGUID ~= playerGUID or not AuraMatchesSpellID(spellID) then
+local function VerifyFreshTrigger()
+    if testState or not hasteWatcherReady then
         return
     end
 
-    if subEvent == "SPELL_AURA_APPLIED" or subEvent == "SPELL_AURA_REFRESH" then
-        UpdateActiveState(true)
+    local hasFreshExhaustion = CheckExhaustionFresh()
+    if not hasFreshExhaustion then
         return
     end
 
-    if subEvent == "SPELL_AURA_REMOVED" then
-        EvaluateAuras()
+    EvaluateAuras()
+end
+
+local function ScheduleFreshTriggerVerification(delay)
+    CancelTimer(pendingAuraTimer)
+    pendingAuraTimer = C_Timer.NewTimer(delay or 0.5, function()
+        pendingAuraTimer = nil
+        VerifyFreshTrigger()
+    end)
+end
+
+local function RefreshHasteWatcher(forceReset)
+    local currentHaste = GetHaste() or 0
+
+    if forceReset then
+        lastHasteValue = currentHaste
+        return
+    end
+
+    local delta = currentHaste - lastHasteValue
+    lastHasteValue = currentHaste
+
+    if delta >= HASTE_THRESHOLD then
+        ScheduleFreshTriggerVerification(0.5)
     end
 end
 
@@ -822,6 +950,8 @@ local function CreateSettingsPanel()
         return
     end
 
+    local db = GetConfig()
+
     settingsPanel = CreateFrame("Frame", ADDON_NAME .. "SettingsPanel", UIParent)
     settingsPanel.name = ADDON_NAME
 
@@ -839,10 +969,10 @@ local function CreateSettingsPanel()
     local smallFieldStep = 122
 
     local textureLabel = CreateSettingLabel(settingsPanel, L.TEXTURE_FILE or "Texture File", subtitle, leftColumnX, -24)
-    texturePathBox = CreatePathEditBox(settingsPanel, textureLabel, GetDisplayPath(GetConfig().texturePath, defaults.texturePath), function(value)
-        GetConfig().texturePath = strtrim(value or "")
+    texturePathBox = CreatePathEditBox(settingsPanel, textureLabel, GetDisplayPath(db.texturePath, defaults.texturePath), function(value)
+        db.texturePath = strtrim(value or "")
     end, 240)
-    texturePathBox:SetText(GetDisplayPath(GetConfig().texturePath, defaults.texturePath))
+    texturePathBox:SetText(GetDisplayPath(db.texturePath, defaults.texturePath))
 
     local textureHelp = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     textureHelp:SetPoint("TOPLEFT", texturePathBox, "BOTTOMLEFT", 4, -6)
@@ -854,10 +984,10 @@ local function CreateSettingsPanel()
     soundLabel:SetPoint("TOPLEFT", textureLabel, "TOPLEFT", rightColumnX, 0)
     soundLabel:SetJustifyH("LEFT")
     soundLabel:SetText(L.SOUND_FILE or "Sound File")
-    soundPathBox = CreatePathEditBox(settingsPanel, soundLabel, GetDisplayPath(GetConfig().soundPath, defaults.soundPath), function(value)
-        GetConfig().soundPath = strtrim(value or "")
+    soundPathBox = CreatePathEditBox(settingsPanel, soundLabel, GetDisplayPath(db.soundPath, defaults.soundPath), function(value)
+        db.soundPath = strtrim(value or "")
     end, 240)
-    soundPathBox:SetText(GetDisplayValue(GetConfig().soundPath, defaults.soundPath))
+    soundPathBox:SetText(GetDisplayValue(db.soundPath, defaults.soundPath))
 
     local soundHelp = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     soundHelp:SetPoint("TOPLEFT", soundPathBox, "BOTTOMLEFT", 4, -6)
@@ -871,23 +1001,23 @@ local function CreateSettingsPanel()
     spriteSectionLabel:SetText(L.SPRITE_SECTION or "Sprite Animation Settings")
 
     local columnsLabel = CreateSettingLabel(settingsPanel, L.SPRITE_COLUMNS or "Columns", spriteSectionLabel, 0, -12)
-    columnsBox = CreatePathEditBox(settingsPanel, columnsLabel, tostring(GetConfig().spriteColumns or defaults.spriteColumns), function(value)
-        GetConfig().spriteColumns = ClampInteger(value, defaults.spriteColumns, 1)
+    columnsBox = CreatePathEditBox(settingsPanel, columnsLabel, tostring(db.spriteColumns or defaults.spriteColumns), function(value)
+        db.spriteColumns = ClampInteger(value, defaults.spriteColumns, 1)
     end, 80)
 
     local rowsLabel = CreateSettingLabel(settingsPanel, L.SPRITE_ROWS or "Rows", spriteSectionLabel, smallFieldStep, -12)
-    rowsBox = CreatePathEditBox(settingsPanel, rowsLabel, tostring(GetConfig().spriteRows or defaults.spriteRows), function(value)
-        GetConfig().spriteRows = ClampInteger(value, defaults.spriteRows, 1)
+    rowsBox = CreatePathEditBox(settingsPanel, rowsLabel, tostring(db.spriteRows or defaults.spriteRows), function(value)
+        db.spriteRows = ClampInteger(value, defaults.spriteRows, 1)
     end, 80)
 
     local framesLabel = CreateSettingLabel(settingsPanel, L.SPRITE_FRAMES or "Frames", spriteSectionLabel, smallFieldStep * 2, -12)
-    framesBox = CreatePathEditBox(settingsPanel, framesLabel, tostring(GetConfig().spriteFrames or defaults.spriteFrames), function(value)
-        GetConfig().spriteFrames = ClampInteger(value, defaults.spriteFrames, 1)
+    framesBox = CreatePathEditBox(settingsPanel, framesLabel, tostring(db.spriteFrames or defaults.spriteFrames), function(value)
+        db.spriteFrames = ClampInteger(value, defaults.spriteFrames, 1)
     end, 80)
 
     local fpsLabel = CreateSettingLabel(settingsPanel, L.SPRITE_FPS or "FPS", spriteSectionLabel, smallFieldStep * 3, -12)
-    fpsBox = CreatePathEditBox(settingsPanel, fpsLabel, tostring(GetConfig().spriteFPS or defaults.spriteFPS), function(value)
-        GetConfig().spriteFPS = ClampInteger(value, defaults.spriteFPS, 1)
+    fpsBox = CreatePathEditBox(settingsPanel, fpsLabel, tostring(db.spriteFPS or defaults.spriteFPS), function(value)
+        db.spriteFPS = ClampInteger(value, defaults.spriteFPS, 1)
     end, 80)
 
     local spriteHelp = settingsPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
@@ -899,10 +1029,8 @@ local function CreateSettingsPanel()
     widthSlider = CreateValueSlider(settingsPanel, spriteHelp, L.WIDTH_LABEL or "Width: 50", 20, 256, 1)
     widthSlider:ClearAllPoints()
     widthSlider:SetPoint("TOPLEFT", spriteHelp, "BOTTOMLEFT", 0, -30)
-    widthValueBox = widthSlider.ValueBox
     widthSlider:SetScript("OnValueChanged", function(self, value)
         local width = math.floor((value or defaults.width) + 0.5)
-        local db = GetConfig()
 
         db.width = width
         if not (self.ValueBox and self.ValueBox:HasFocus()) then
@@ -920,10 +1048,8 @@ local function CreateSettingsPanel()
     heightSlider:SetPoint("TOPLEFT", widthSlider, "BOTTOMLEFT", 0, -46)
     heightSlider.ValueBox:ClearAllPoints()
     heightSlider.ValueBox:SetPoint("LEFT", heightSlider, "RIGHT", 14, 0)
-    heightValueBox = heightSlider.ValueBox
     heightSlider:SetScript("OnValueChanged", function(self, value)
         local height = math.floor((value or defaults.height) + 0.5)
-        local db = GetConfig()
 
         db.height = height
         if not (self.ValueBox and self.ValueBox:HasFocus()) then
@@ -941,12 +1067,12 @@ local function CreateSettingsPanel()
     applySettingsButton:SetPoint("TOPLEFT", heightSlider, "BOTTOMLEFT", 0, -32)
     applySettingsButton:SetText(L.APPLY or "Apply")
     applySettingsButton:SetScript("OnClick", function()
-        GetConfig().texturePath = strtrim(texturePathBox:GetText() or "")
-        GetConfig().soundPath = strtrim(soundPathBox:GetText() or "")
-        GetConfig().spriteColumns = ClampInteger(columnsBox:GetText(), defaults.spriteColumns, 1)
-        GetConfig().spriteRows = ClampInteger(rowsBox:GetText(), defaults.spriteRows, 1)
-        GetConfig().spriteFrames = ClampInteger(framesBox:GetText(), defaults.spriteFrames, 1)
-        GetConfig().spriteFPS = ClampInteger(fpsBox:GetText(), defaults.spriteFPS, 1)
+        db.texturePath = strtrim(texturePathBox:GetText() or "")
+        db.soundPath = strtrim(soundPathBox:GetText() or "")
+        db.spriteColumns = ClampInteger(columnsBox:GetText(), defaults.spriteColumns, 1)
+        db.spriteRows = ClampInteger(rowsBox:GetText(), defaults.spriteRows, 1)
+        db.spriteFrames = ClampInteger(framesBox:GetText(), defaults.spriteFrames, 1)
+        db.spriteFPS = ClampInteger(fpsBox:GetText(), defaults.spriteFPS, 1)
         GetSpriteSettings()
         ApplyVisualConfig()
         if activeState or testState then
@@ -961,14 +1087,14 @@ local function CreateSettingsPanel()
     defaultSettingsButton:SetPoint("LEFT", applySettingsButton, "RIGHT", 8, 0)
     defaultSettingsButton:SetText(L.DEFAULT or "Default")
     defaultSettingsButton:SetScript("OnClick", function()
-        GetConfig().texturePath = defaults.texturePath
-        GetConfig().soundPath = defaults.soundPath
-        GetConfig().spriteColumns = defaults.spriteColumns
-        GetConfig().spriteRows = defaults.spriteRows
-        GetConfig().spriteFrames = defaults.spriteFrames
-        GetConfig().spriteFPS = defaults.spriteFPS
-        GetConfig().width = defaults.width
-        GetConfig().height = defaults.height
+        db.texturePath = defaults.texturePath
+        db.soundPath = defaults.soundPath
+        db.spriteColumns = defaults.spriteColumns
+        db.spriteRows = defaults.spriteRows
+        db.spriteFrames = defaults.spriteFrames
+        db.spriteFPS = defaults.spriteFPS
+        db.width = defaults.width
+        db.height = defaults.height
         RefreshPathInputs()
         ApplyVisualConfig()
         ShowStatusMessage(L.DEFAULTS_RESTORED or "Default file names restored.")
@@ -1041,10 +1167,6 @@ local function CreateSettingsPanel()
     ApplyElvUISkin()
 end
 
-local function PrintUsage()
-    print("|cff00ff98NatLust|r " .. (L.USAGE or "Use /nl or /natlust to open the settings panel."))
-end
-
 local function HandleSlashCommand()
     OpenSettingsPanel()
 end
@@ -1052,21 +1174,28 @@ end
 local function Initialize()
     GetConfig()
     NormalizePaths()
-    playerGUID = UnitGUID("player")
     CreateVisualFrame()
     CreateSettingsPanel()
     SetUnlocked(false)
     ApplyElvUISkin()
+
+    lastHasteValue = GetHaste() or 0
+    C_Timer.After(5, function()
+        hasteWatcherReady = true
+        RefreshHasteWatcher(true)
+        EvaluateAuras()
+    end)
 
     SLASH_NATLUST1 = "/nl"
     SLASH_NATLUST2 = "/natlust"
     SlashCmdList.NATLUST = HandleSlashCommand
 
     addon:RegisterEvent("UNIT_AURA")
-    addon:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+    addon:RegisterEvent("COMBAT_RATING_UPDATE")
     addon:RegisterEvent("PLAYER_ENTERING_WORLD")
     addon:RegisterEvent("PLAYER_DEAD")
     addon:RegisterEvent("PLAYER_ALIVE")
+    addon:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
     EvaluateAuras()
 end
 
@@ -1088,15 +1217,21 @@ addon:SetScript("OnEvent", function(_, event, ...)
         return
     end
 
-    if event == "COMBAT_LOG_EVENT_UNFILTERED" then
-        local _, subEvent, _, _, _, _, _, destGUID, _, _, _, spellID = CombatLogGetCurrentEventInfo()
-        EvaluateFromCombatLog(subEvent, destGUID, spellID)
+    if event == "COMBAT_RATING_UPDATE" then
+        RefreshHasteWatcher()
         return
     end
 
     if event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_DEAD" or event == "PLAYER_ALIVE" then
-        playerGUID = UnitGUID("player")
+        RefreshHasteWatcher(true)
         EvaluateAuras()
+        return
+    end
+
+    if event == "PLAYER_EQUIPMENT_CHANGED" then
+        C_Timer.After(1, function()
+            RefreshHasteWatcher(true)
+        end)
     end
 end)
 
