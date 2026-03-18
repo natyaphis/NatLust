@@ -36,6 +36,7 @@ local RefreshPathInputs
 local isElvUISkinned = false
 local spriteElapsed = 0
 local currentSpriteFrame = 1
+local playerGUID
 
 local trackedBuffs = {
     [2825] = true, -- Bloodlust
@@ -43,6 +44,7 @@ local trackedBuffs = {
     [80353] = true, -- Time Warp
     [264667] = true, -- Primal Rage
     [390386] = true, -- Fury of the Aspects
+    [466904] = true, -- Harrier's Cry
 }
 
 local MEDIA_PREFIX = "Interface\\AddOns\\NatLust\\Media\\"
@@ -319,6 +321,8 @@ StopVisual = function()
     end
 
     StopSpriteAnimation()
+    visualTexture:SetAlpha(1)
+    visualTexture:SetScale(1)
     visualTexture:Hide()
 
     if unlockState then
@@ -454,6 +458,21 @@ local function EvaluateAuras()
         print("|cff00ff98NatLust|r " .. (L.LUST_DETECTED or "Lust aura detected on player."))
     end
     UpdateActiveState(hasTrackedAura)
+end
+
+local function EvaluateFromCombatLog(subEvent, destGUID, spellID)
+    if testState or not playerGUID or destGUID ~= playerGUID or not AuraMatchesSpellID(spellID) then
+        return
+    end
+
+    if subEvent == "SPELL_AURA_APPLIED" or subEvent == "SPELL_AURA_REFRESH" then
+        UpdateActiveState(true)
+        return
+    end
+
+    if subEvent == "SPELL_AURA_REMOVED" then
+        EvaluateAuras()
+    end
 end
 
 local function SetUnlocked(enabled)
@@ -1033,6 +1052,7 @@ end
 local function Initialize()
     GetConfig()
     NormalizePaths()
+    playerGUID = UnitGUID("player")
     CreateVisualFrame()
     CreateSettingsPanel()
     SetUnlocked(false)
@@ -1043,6 +1063,10 @@ local function Initialize()
     SlashCmdList.NATLUST = HandleSlashCommand
 
     addon:RegisterEvent("UNIT_AURA")
+    addon:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+    addon:RegisterEvent("PLAYER_ENTERING_WORLD")
+    addon:RegisterEvent("PLAYER_DEAD")
+    addon:RegisterEvent("PLAYER_ALIVE")
     EvaluateAuras()
 end
 
@@ -1061,6 +1085,18 @@ addon:SetScript("OnEvent", function(_, event, ...)
         if unit == "player" then
             EvaluateAuras()
         end
+        return
+    end
+
+    if event == "COMBAT_LOG_EVENT_UNFILTERED" then
+        local _, subEvent, _, _, _, _, _, destGUID, _, _, _, spellID = CombatLogGetCurrentEventInfo()
+        EvaluateFromCombatLog(subEvent, destGUID, spellID)
+        return
+    end
+
+    if event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_DEAD" or event == "PLAYER_ALIVE" then
+        playerGUID = UnitGUID("player")
+        EvaluateAuras()
     end
 end)
 
