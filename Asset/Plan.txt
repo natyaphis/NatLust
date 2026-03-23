@@ -1,0 +1,81 @@
+NatLust lust detection logic
+
+Tracked lust-type buff spell IDs:
+- 2825 Bloodlust
+- 32182 Heroism
+- 80353 Time Warp
+- 264667 Primal Rage
+- 390386 Fury of the Aspects
+- 466904 Harrier's Cry
+
+Tracked exhaustion-style debuff spell IDs:
+- 57723 Exhaustion
+- 57724 Sated
+- 80354 Temporal Displacement
+- 95809 Insanity
+- 160455 Fatigued
+- 207400 Shamanic Exhaustion
+- 264689 Fatigued
+- 390435 Exhausted
+
+NatLust uses a three-layer confirmation model:
+
+1. Direct aura scan on player
+- Main detection is GetTrackedAuraState().
+- It first tries C_UnitAuras.GetPlayerAuraBySpellID for each tracked lust spell ID.
+- If that fails, it falls back to scanning helpful auras by index.
+- If any tracked aura exists on the player, NatLust treats lust as active and uses the aura expirationTime.
+
+2. Combat log assisted confirmation
+- COMBAT_LOG_EVENT_UNFILTERED is used as a trigger source, not as the final truth.
+- On SPELL_CAST_SUCCESS for a tracked lust spell, NatLust schedules short delayed rescans.
+- On SPELL_AURA_APPLIED or SPELL_AURA_REFRESH for a tracked lust spell on the player, it rescans immediately.
+- On SPELL_AURA_REMOVED for a tracked lust spell on the player, it reevaluates and can stop effects.
+- The rescan series can retry multiple times to handle timing gaps where combat log arrives before aura data is visible.
+
+3. Haste spike plus fresh exhaustion fallback
+- NatLust also watches COMBAT_RATING_UPDATE.
+- If haste increases by at least 30, it schedules a verification pass.
+- That pass checks whether the player has a fresh exhaustion-style debuff whose remaining duration is still near the full 600 seconds.
+- If a fresh exhaustion debuff is found, NatLust schedules aura confirmation again.
+
+Effect state behavior:
+- EvaluateAuras() decides whether lust is active.
+- UpdateActiveState(true) starts visual and audio effects.
+- UpdateActiveState(false) stops effects.
+- When active, NatLust schedules a check near aura expiration so the effects can stop cleanly.
+
+Why NatLust is less stable than SimpleMonitorBars for buff-trigger monitoring
+
+1. NatLust does not continuously track a specific aura instance
+- NatLust mainly answers "does the player currently have one of these tracked spell IDs?"
+- Each check rescans current auras and can flip inactive as soon as the scan returns nil.
+- SimpleMonitorBars stores auraInstanceID and tracked unit, then tries to reacquire aura data by that instance. This is more resilient to temporary timing gaps and stale reads.
+
+2. NatLust has fewer aura-read fallback paths
+- NatLust uses GetPlayerAuraBySpellID, then aura-by-index scanning, then UnitBuff fallback.
+- SimpleMonitorBars uses more layers: GetPlayerAuraBySpellID, GetAuraDataByIndex, GetAuraDataBySpellName, AuraUtil.ForEachAura, and UnitAura fallback.
+- Because SMB has more fallback paths, it is more tolerant of API variation and aura timing edge cases.
+
+3. NatLust does not use UNIT_AURA updateInfo details
+- NatLust reacts to UNIT_AURA by rescanning player auras.
+- SimpleMonitorBars consumes updateInfo from UNIT_AURA and can inspect removedAuraInstanceIDs directly.
+- That lets SMB react to exact aura-instance changes rather than depending only on a full rescan result.
+
+4. NatLust relies on indirect fallback signals
+- Combat log events are only hints that a lust-like effect may be happening.
+- Haste spikes and exhaustion debuffs are also indirect clues.
+- These signals help reduce missed triggers, but they are not as authoritative as maintaining direct aura-instance tracking.
+
+5. NatLust only recognizes a fixed spell list
+- If a real in-game variant or equivalent aura is not in the trackedBuffs table, NatLust will never trigger for it.
+- SMB monitors whatever specific spellID the bar is configured to watch.
+
+6. NatLust enables haste fallback after startup delay
+- The haste watcher is armed after a short delayed initialization window.
+- This is not the main cause of instability, but it weakens early-session fallback coverage.
+
+Short summary
+- SimpleMonitorBars is aura-instance-centered tracking.
+- NatLust is event-assisted aura presence confirmation.
+- SMB is therefore naturally more stable for buff monitoring, while NatLust is more sensitive to aura timing and limited tracked spell coverage.
