@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-- Maintenance update.
+- Updated addon version metadata.
 
 ## 1.1.4
 
